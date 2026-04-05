@@ -66,7 +66,7 @@ interface AnalysisResults {
 }
 
 const DEFAULT_QUESTION =
-  "What is the cup to disc ratio in this image?";
+  "How severe is the diabetic retinopathy in this image?";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";

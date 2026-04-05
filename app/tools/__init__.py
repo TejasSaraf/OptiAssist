@@ -1,1 +1,1 @@
-# OptiAssist tools package
+# OpusAI tools package

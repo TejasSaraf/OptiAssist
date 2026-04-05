@@ -14,7 +14,7 @@ from agents.diagnosis import run_diagnosis, _load_medgemma, _medgemma_4bit
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Prevent diagnosis.py from HTTP-calling back into this process when
-    # OPTIASSIST_MEDGEMMA_URL is in .env (used by the orchestrator only).
+    # OpusAI_MEDGEMMA_URL is in .env (used by the orchestrator only).
     os.environ["_MEDGEMMA_SERVER_PROCESS"] = "1"
     print("Loading MedGemma 4B into active memory... (This may take a few minutes)")
     _load_medgemma()

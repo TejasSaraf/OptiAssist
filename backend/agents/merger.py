@@ -29,10 +29,10 @@ logger = logging.getLogger(__name__)
 DISCLAIMER = "For research use only. Not intended for clinical diagnosis."
 
 OLLAMA_URL = os.environ.get(
-    "OPTIASSIST_OLLAMA_GENERATE_URL",
+    "OpusAI_OLLAMA_GENERATE_URL",
     "http://localhost:11434/api/generate",
 )
-OLLAMA_MODEL = os.environ.get("OPTIASSIST_GEMMA3_SUMMARY_MODEL", "gemma3:4b")
+OLLAMA_MODEL = os.environ.get("OpusAI_GEMMA3_SUMMARY_MODEL", "gemma3:4b")
 
 _SUMMARY_PROMPT_TEMPLATE = (
     "You are an expert ophthalmology AI assistant.\n"

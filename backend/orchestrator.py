@@ -3,7 +3,7 @@ from __future__ import annotations
 """
 orchestrator.py
 
-Main pipeline orchestration for OptiAssist, an ophthalmology AI assistant.
+Main pipeline orchestration for OpusAI, an ophthalmology AI assistant.
 
 Coordinates input parsing, image pre-scanning, the FunctionGemma agentic loop,
 and result merging into a single async pipeline exposed via run_pipeline().
@@ -41,7 +41,7 @@ async def run_pipeline(
     emit: Callable[[str, str], Awaitable[None]],
 ) -> dict:
     """
-    Execute the full OptiAssist analysis pipeline.
+    Execute the full OpusAI analysis pipeline.
 
     Args:
         image_bytes: Raw image bytes from the client, or None for text-only questions.

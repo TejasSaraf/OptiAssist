@@ -2,7 +2,7 @@
 Serve fine-tuned MedGemma (google/medgemma-4b-it + LoRA) on Modal with FastAPI.
 
 Loads 4-bit NF4 base weights from cache and PEFT adapters from volume
-``optiassist-checkpoints`` at ``/checkpoints/medgemma/final`` (same layout as
+``OpusAI-checkpoints`` at ``/checkpoints/medgemma/final`` (same layout as
 training).
 
 Prerequisites
@@ -18,7 +18,7 @@ Interactive / dev (temporary URL)
 
 Point your stack at the deployment URL + path, e.g. set in ``.env``::
 
-    OPTIASSIST_MEDGEMMA_URL=https://<workspace>--optiassist-medgemma-serve-serve.modal.run
+    OpusAI_MEDGEMMA_URL=https://<workspace>--OpusAI-medgemma-serve-serve.modal.run
 
 (Exact hostname is printed after ``modal deploy``; include no trailing slash.)
 """
@@ -27,13 +27,13 @@ from __future__ import annotations
 
 import modal
 
-app = modal.App("optiassist-medgemma-serve")
+app = modal.App("OpusAI-medgemma-serve")
 
 model_cache = modal.Volume.from_name(
-    "optiassist-model-cache", create_if_missing=True
+    "OpusAI-model-cache", create_if_missing=True
 )
 checkpoints_vol = modal.Volume.from_name(
-    "optiassist-checkpoints", create_if_missing=True
+    "OpusAI-checkpoints", create_if_missing=True
 )
 
 serve_image = (

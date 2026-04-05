@@ -1,7 +1,7 @@
 """
 test_pipeline.py
 
-End-to-end test of the OptiAssist retinal analysis pipeline.
+End-to-end test of the OpusAI retinal analysis pipeline.
 
 Tests each stage independently so you can see which parts are working
 and which need setup:
@@ -366,7 +366,7 @@ async def run_full_pipeline(image_bytes: bytes, skip_missing: bool = False):
 
 
 async def async_main():
-    parser = argparse.ArgumentParser(description="Test OptiAssist pipeline")
+    parser = argparse.ArgumentParser(description="Test OpusAI pipeline")
     parser.add_argument("--image", "-i", required=True,
                         help="Path to retinal image")
     parser.add_argument("--stage", "-s", default=None,

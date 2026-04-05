@@ -15,10 +15,10 @@ import httpx
 logger = logging.getLogger(__name__)
 
 OLLAMA_URL = os.environ.get(
-    "OPTIASSIST_OLLAMA_CHAT_URL",
+    "OpusAI_OLLAMA_CHAT_URL",
     "http://localhost:11434/api/chat",
 )
-OLLAMA_MODEL = os.environ.get("OPTIASSIST_GEMMA3_PRESCAN_MODEL", "gemma3:4b")
+OLLAMA_MODEL = os.environ.get("OpusAI_GEMMA3_PRESCAN_MODEL", "gemma3:4b")
 PRESCAN_PROMPT = (
     "You are an expert ophthalmology image analysis assistant specializing in "
     "diabetic retinopathy screening.\n\n"
