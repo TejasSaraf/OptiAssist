@@ -42,19 +42,20 @@ export default function Landing({ onStart }: LandingProps) {
       <main className="flex-1 relative z-10 flex flex-col items-center justify-center p-6 text-center max-w-5xl mx-auto w-full">
         <div className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/35 rounded-full mb-8 shadow-[0_0_28px_rgba(34,197,94,0.2)]">
           <Sparkles className="w-4 h-4 text-green-400 animate-pulse" />
-          <span className="text-xs font-semibold text-green-300 tracking-wide">Multi-Agent AI Pipeline</span>
+          <span className="text-xs font-semibold text-green-300 tracking-wide">Retinal Intelligence</span>
         </div>
 
-        <h2 className="text-5xl sm:text-7xl font-extrabold tracking-tight mb-6 leading-[1.08] text-white">
-          Clinical Diagnostics, <br className="hidden sm:block" />
-          <span className="bg-gradient-to-r from-green-300 via-green-400 to-emerald-500 bg-clip-text text-transparent">
-            Powered by Agentic AI
+        <h2 className="text-5xl sm:text-7xl font-extrabold tracking-tight mb-4 leading-[1.08] text-white">
+          OpusAI <span className="bg-gradient-to-r from-green-300 via-green-400 to-emerald-500 bg-clip-text text-transparent">Retinal Intelligence</span>
+          <br />
+          <span className="text-3xl sm:text-5xl font-bold text-zinc-300 mt-2 block">
+            for Diabetic Retinopathy
           </span>
         </h2>
 
         <p className="text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto mb-12 leading-relaxed">
-          OpusAI orchestrates a specialized team of AI models—Gemma 3, PaliGemma 2, MedGemma, and
-          FunctionGemma—to autonomously pre-scan, segment, and diagnose retinal fundus images.
+          Upload a fundus image. OpusAI detects diabetic retinopathy, streams live clinical
+          reasoning, and lets you interrogate every finding in seconds.
         </p>
 
         <button

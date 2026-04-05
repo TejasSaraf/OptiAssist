@@ -304,19 +304,32 @@ export default function LandingPage() {
                     </div>
                 </nav>
 
-                {/* ═══════════ SECTION 1 — FULL-SCREEN HERO ═══════════ */}
-                <section style={{ position: "relative", minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingTop: 56, paddingBottom: 48, paddingLeft: "1.5rem", paddingRight: "1.5rem", overflow: "hidden", background: "transparent", boxSizing: "border-box" }}>
-
+                {/* ═══════════ SECTION 1 — FULL-SCREEN HERO (viewport-centered) ═══════════ */}
+                <section
+                    style={{
+                        position: "relative",
+                        minHeight: "100dvh",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        boxSizing: "border-box",
+                        overflow: "hidden",
+                        background: "transparent",
+                        paddingTop: 56,
+                        paddingBottom: 48,
+                        paddingLeft: "1.5rem",
+                        paddingRight: "1.5rem",
+                    }}
+                >
                     <div
                         style={{
                             position: "relative",
                             zIndex: 10,
-                            width: "100%",
-                            maxWidth: 920,
-                            margin: "0 auto",
                             display: "flex",
                             flexDirection: "column",
                             alignItems: "center",
+                            justifyContent: "center",
                             textAlign: "center",
                         }}
                     >
@@ -349,13 +362,16 @@ export default function LandingPage() {
                                 margin: "0 0 18px",
                                 width: "100%",
                                 textAlign: "center",
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
                             }}
                         >
                             <span className="hero-headline-line1">
                                 <span style={{ color: "#fff" }}>OpusAI </span>
                                 <span
                                     style={{
-                                        backgroundImage: "linear-gradient(135deg, rgb(74, 222, 128) 0%, rgb(34, 211, 238) 100%)",
+                                        backgroundImage: "linear-gradient(135deg, rgb(127, 238, 100) 0%, rgb(34, 211, 238) 100%)",
                                         WebkitBackgroundClip: "text",
                                         backgroundClip: "text",
                                         color: "transparent",
@@ -365,14 +381,35 @@ export default function LandingPage() {
                                     Retinal intelligence
                                 </span>
                             </span>
-                            <br />
-                            <span style={{ color: "rgba(255,255,255,0.92)", display: "block", fontSize: "clamp(30px, 5.2vw, 48px)", fontWeight: 800, letterSpacing: "-0.02em", marginTop: "0.12em" }}>
+                            <span
+                                style={{
+                                    color: "rgba(255,255,255,0.92)",
+                                    display: "block",
+                                    fontSize: "clamp(30px, 5.2vw, 48px)",
+                                    fontWeight: 800,
+                                    letterSpacing: "-0.02em",
+                                    marginTop: "0.12em",
+                                    textAlign: "center",
+                                    width: "100%",
+                                }}
+                            >
                                 for Diabetic Retinopathy
                             </span>
                         </h1>
 
-                        <p style={{ color: "rgba(255,255,255,0.85)", fontSize: "clamp(15px, 2.2vw, 18px)", lineHeight: 1.75, maxWidth: 560, margin: "0 0 40px", fontWeight: 400, textAlign: "center", padding: "0 0.25rem" }}>
-                            Upload a fundus image. OpusAI detects diabetic retinopathy, streams live clinical reasoning, and lets you interrogate every findingf in seconds.
+                        <p
+                            style={{
+                                color: "rgba(255,255,255,0.85)",
+                                fontSize: "clamp(15px, 2.2vw, 18px)",
+                                lineHeight: 1.75,
+                                maxWidth: 560,
+                                margin: "0 auto 40px",
+                                fontWeight: 400,
+                                textAlign: "center",
+                                padding: "0 0.25rem",
+                            }}
+                        >
+                            Upload a fundus image. OpusAI detects diabetic retinopathy, streams live clinical reasoning, and lets you interrogate every finding in seconds.
                         </p>
 
                         {/* CTA Buttons */}
@@ -643,7 +680,9 @@ export default function LandingPage() {
                     animation: pipelineLineIn 0.42s ease-out both;
                 }
                 .hero-headline-line1 {
-                    display: inline-block;
+                    display: block;
+                    width: 100%;
+                    text-align: center;
                     white-space: nowrap;
                 }
                 @media (max-width: 540px) {
