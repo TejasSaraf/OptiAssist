@@ -3,26 +3,35 @@ from __future__ import annotations
 """
 diagnosis.py
 
-MedGemma diagnosis agent — uses Google's MedGemma 4B (google/medgemma-4b-it)
-via HuggingFace Transformers to produce a structured medical diagnosis for a
-retinal fundus image.
+MedGemma diagnosis — structured JSON for a retinal fundus image.
 
-Runtime: HuggingFace Transformers pipeline("image-text-to-text")
-Model:   google/medgemma-4b-it
+Backends (first match wins for step 5 in ``/api/analyze``):
+    1. OPTIASSIST_MEDGEMMA_URL set → HTTP to serve_medgemma.py (HF Transformers)
+    2. Else default → Ollama ``/api/chat`` (same as Gemma 3 prescan / FunctionGemma).
+       Model tag: OPTIASSIST_MEDGEMMA_OLLAMA_MODEL (default ``medgemma``).
+       Build the model from ``backend/ollama/Modelfile``.
+    3. OPTIASSIST_MEDGEMMA_BACKEND=hf  (or OPTIASSIST_USE_HF_MEDGEMMA=1)
+       → HuggingFace Transformers in-process (google/medgemma-4b-it)
+    4. OPTIASSIST_USE_OLLAMA_MEDGEMMA=0 → skip Ollama and use HF when URL empty
 
-When OPTIASSIST_MEDGEMMA_URL is set (e.g. http://localhost:8081), inference
-is delegated to the dedicated serve_medgemma.py server via HTTP. Otherwise
-the pipeline is loaded in-process.
+Device (HF full-precision only; CUDA 4-bit unchanged):
+    OPTIASSIST_MEDGEMMA_DEVICE   — cpu | cuda | mps | auto (default auto)
+    OPTIASSIST_MEDGEMMA_USE_MPS  — 1 to allow MPS when auto and no CUDA
+        (default 0: use CPU on Apple Silicon — avoids MPS placeholder bugs)
 
-Pipeline role:
-    1. Gemma 3 prescans the image          → image_description
-    2. FunctionGemma decides route          → run_diagnosis called
-    3. PaliGemma 2 runs segmentation        → paligemma_context (if applicable)
-    4. ★ THIS AGENT: MedGemma diagnosis     → structured JSON result
-    5. Gemma 3 synthesises final summary    → merger.py
+Ollama env:
+    OPTIASSIST_OLLAMA_CHAT_URL       — default http://localhost:11434/api/chat
+    OPTIASSIST_MEDGEMMA_OLLAMA_MODEL — default medgemma
+
+Ollama model creation: see ``backend/ollama/Modelfile`` (GGUF + mmproj download,
+then ``cd backend/ollama && ollama create medgemma -f Modelfile``).
+
+Orchestrator order (see ``main.py``): Input → Gemma 3 prescan → FunctionGemma →
+PaliGemma → ★ MedGemma (this module) → Gemma 3 summary (merger).
 """
 
 import asyncio
+import base64
 import io
 import json
 import logging
@@ -160,33 +169,94 @@ def _load_medgemma():
         logger.info("MedGemma pipeline loaded successfully (4-bit quantized).")
 
     else:
-        # ── Full-precision loading (MPS / CPU / 4-bit disabled) ──────
-        if torch.cuda.is_available():
-            dtype = torch.bfloat16
-            device_map = "auto"
-        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            dtype = torch.float16
-            device_map = "auto"
-        else:
-            dtype = torch.float32
-            device_map = None
-
-        logger.info(
-            "Loading MedGemma pipeline from %s (dtype=%s, device_map=%s)",
-            _HF_MODEL_ID, dtype, device_map,
+        # ── Full-precision loading (CUDA / optional MPS / CPU) ───────────
+        # Apple MPS + Gemma multimodal pipelines often raise:
+        #   Placeholder storage has not been allocated on MPS device!
+        # Default on Mac is therefore CPU unless OPTIASSIST_MEDGEMMA_USE_MPS=1
+        # or OPTIASSIST_MEDGEMMA_DEVICE=mps.
+        has_cuda = torch.cuda.is_available()
+        has_mps = (
+            hasattr(torch.backends, "mps")
+            and torch.backends.mps.is_available()
         )
+        dev_pref = os.environ.get("OPTIASSIST_MEDGEMMA_DEVICE", "").strip().lower()
+        use_mps_flag = os.environ.get(
+            "OPTIASSIST_MEDGEMMA_USE_MPS", "0",
+        ).strip().lower() in ("1", "true", "yes", "on")
+
+        if dev_pref == "cpu":
+            backend = "cpu"
+        elif dev_pref == "cuda" and has_cuda:
+            backend = "cuda"
+        elif dev_pref == "mps" and has_mps:
+            backend = "mps"
+        elif dev_pref in ("auto", ""):
+            if has_cuda:
+                backend = "cuda"
+            elif has_mps and use_mps_flag:
+                backend = "mps"
+            else:
+                backend = "cpu"
+                if has_mps and not use_mps_flag:
+                    logger.warning(
+                        "MedGemma: skipping MPS (multimodal instability). "
+                        "Using CPU. For Apple GPU try OPTIASSIST_MEDGEMMA_USE_MPS=1 "
+                        "or OPTIASSIST_MEDGEMMA_DEVICE=mps at your own risk."
+                    )
+        else:
+            backend = "cpu"
+
         processor = AutoProcessor.from_pretrained(
             _HF_MODEL_ID, token=hf_token, use_fast=True,
         )
-        _medgemma_pipe = pipeline(
-            "image-text-to-text",
-            model=_HF_MODEL_ID,
-            token=hf_token,
-            torch_dtype=dtype,
-            device_map=device_map,
-            image_processor=processor.image_processor,
-            tokenizer=processor.tokenizer,
-        )
+
+        if backend == "cuda":
+            dtype = torch.bfloat16
+            device_map = "auto"
+            logger.info(
+                "Loading MedGemma (CUDA, dtype=%s, device_map=%s)",
+                dtype, device_map,
+            )
+            _medgemma_pipe = pipeline(
+                "image-text-to-text",
+                model=_HF_MODEL_ID,
+                token=hf_token,
+                torch_dtype=dtype,
+                device_map=device_map,
+                image_processor=processor.image_processor,
+                tokenizer=processor.tokenizer,
+            )
+        elif backend == "mps":
+            dtype = torch.float16
+            logger.info(
+                "Loading MedGemma (MPS, dtype=%s, device_map=auto) — may be unstable",
+                dtype,
+            )
+            _medgemma_pipe = pipeline(
+                "image-text-to-text",
+                model=_HF_MODEL_ID,
+                token=hf_token,
+                torch_dtype=dtype,
+                device_map="auto",
+                image_processor=processor.image_processor,
+                tokenizer=processor.tokenizer,
+            )
+        else:
+            dtype = torch.float32
+            logger.info(
+                "Loading MedGemma (CPU, dtype=%s) — slower but stable on Apple Silicon",
+                dtype,
+            )
+            _medgemma_pipe = pipeline(
+                "image-text-to-text",
+                model=_HF_MODEL_ID,
+                token=hf_token,
+                torch_dtype=dtype,
+                device="cpu",
+                image_processor=processor.image_processor,
+                tokenizer=processor.tokenizer,
+            )
+
         _medgemma_4bit = False
         logger.info("MedGemma pipeline loaded successfully (full precision).")
 
@@ -217,6 +287,105 @@ def _run_inference(messages: list[dict]) -> str:
         return str(last)
 
     return str(generated)
+
+
+def _build_diagnosis_user_text(
+    query: str,
+    image_description: str,
+    paligemma_context: str,
+) -> str:
+    full_query = query
+    if image_description:
+        full_query = (
+            f"{query}\n\n"
+            f"Pre-scan image description (from Gemma 3):\n{image_description}"
+        )
+    if paligemma_context:
+        full_query = (
+            f"{full_query}\n\n"
+            f"PaliGemma 2 segmentation results:\n{paligemma_context}"
+        )
+    return full_query
+
+
+def _use_ollama_medgemma() -> bool:
+    """
+    Default: Ollama (aligns with Gemma 3 + FunctionGemma on the same host).
+
+    Use HuggingFace in-process instead:
+        OPTIASSIST_MEDGEMMA_BACKEND=hf
+        or OPTIASSIST_USE_HF_MEDGEMMA=1
+        or OPTIASSIST_USE_OLLAMA_MEDGEMMA=0
+    """
+    backend = os.environ.get("OPTIASSIST_MEDGEMMA_BACKEND", "").strip().lower()
+    if backend in ("hf", "transformers", "huggingface"):
+        return False
+    if backend == "ollama":
+        return True
+    if os.environ.get("OPTIASSIST_USE_HF_MEDGEMMA", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    ):
+        return False
+    if os.environ.get("OPTIASSIST_USE_OLLAMA_MEDGEMMA", "").strip().lower() in (
+        "0", "false", "no", "off",
+    ):
+        return False
+    if os.environ.get("OPTIASSIST_USE_OLLAMA_MEDGEMMA", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    ):
+        return True
+    return True
+
+
+async def _run_diagnosis_ollama(
+    image_bytes: bytes | None,
+    query: str,
+    image_description: str,
+    paligemma_context: str,
+) -> dict:
+    """
+    Call Ollama /api/chat with a vision message (same transport as Gemma 3 prescan).
+    One user turn bundles system instructions + clinical text so templates stay happy.
+    """
+    ollama_url = os.environ.get(
+        "OPTIASSIST_OLLAMA_CHAT_URL",
+        "http://localhost:11434/api/chat",
+    )
+    model = os.environ.get(
+        "OPTIASSIST_MEDGEMMA_OLLAMA_MODEL",
+        "medgemma",
+    )
+    user_text = _build_diagnosis_user_text(
+        query, image_description, paligemma_context,
+    )
+    combined = (
+        f"{SYSTEM_PROMPT}\n\n--- Clinical task ---\n\n{user_text}"
+    )
+    user_msg: dict = {"role": "user", "content": combined}
+    if image_bytes is not None:
+        user_msg["images"] = [base64.b64encode(image_bytes).decode("utf-8")]
+
+    payload = {
+        "model": model,
+        "messages": [user_msg],
+        "stream": False,
+    }
+
+    logger.info(
+        "MedGemma — Ollama model=%s url=%s has_image=%s",
+        model, ollama_url, image_bytes is not None,
+    )
+
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        resp = await client.post(ollama_url, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+    raw = (data.get("message") or {}).get("content", "") or ""
+    raw = raw.strip()
+    if not raw:
+        logger.warning("Ollama MedGemma returned empty content")
+        return dict(FALLBACK_RESULT)
+    return _parse_json(raw)
 
 
 def _parse_json(raw_text: str) -> dict:
@@ -292,10 +461,9 @@ async def run_diagnosis(
     paligemma_context: str = "",
 ) -> dict:
     """
-    Produce a structured ophthalmological diagnosis using MedGemma.
+    Structured ophthalmology JSON (pipeline step 5).
 
-    Routes to the HTTP server at OPTIASSIST_MEDGEMMA_URL when set (and
-    we're not inside serve_medgemma itself), otherwise runs in-process.
+    Order: optional HTTP serve → default Ollama → optional HF Transformers.
     """
     # Check for remote inference: use HTTP only when the orchestrator set
     # the URL *and* we are NOT inside the serve_medgemma server process.
@@ -311,7 +479,20 @@ async def run_diagnosis(
         except Exception as e:
             raise RuntimeError(f"MedGemma remote inference failed: {e}") from e
 
-    # ── In-process inference ──────────────────────────────────────────
+    if _use_ollama_medgemma():
+        try:
+            result = await _run_diagnosis_ollama(
+                image_bytes, query, image_description, paligemma_context,
+            )
+            logger.info(
+                "MedGemma Ollama diagnosis complete. condition=%s severity=%s",
+                result.get("condition"), result.get("severity"),
+            )
+            return result
+        except Exception as e:
+            raise RuntimeError(f"MedGemma Ollama inference failed: {e}") from e
+
+    # ── In-process HuggingFace inference ──────────────────────────────
     pil_image: Image.Image | None = None
     if image_bytes is not None:
         try:
@@ -326,17 +507,9 @@ async def run_diagnosis(
             raise RuntimeError(
                 f"Failed to decode image bytes into PIL Image: {e}") from e
 
-    full_query = query
-    if image_description:
-        full_query = (
-            f"{query}\n\n"
-            f"Pre-scan image description (from Gemma 3):\n{image_description}"
-        )
-    if paligemma_context:
-        full_query = (
-            f"{full_query}\n\n"
-            f"PaliGemma 2 segmentation results:\n{paligemma_context}"
-        )
+    full_query = _build_diagnosis_user_text(
+        query, image_description, paligemma_context,
+    )
 
     user_content: list[dict]
     if pil_image is not None:

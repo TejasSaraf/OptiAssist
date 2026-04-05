@@ -1,21 +1,29 @@
 """
-OptiAssist Backend — 6-Stage Linear Pipeline
+OptiAssist Backend — 6-stage linear pipeline (``POST /api/analyze``)
 
     1. input        → Image + prompt accepted
-    2. gemma3       → Gemma 3 pre-scans the retinal image  (Ollama)
-    3. routing      → FunctionGemma proposes a route  (Ollama); advisory only
-    4. paligemma    → PaliGemma describes / localizes structures in the image
-    5. medgemma     → MedGemma diagnosis (prompt includes PaliGemma output)
-    6. synthesis    → Gemma 3 narrative summary over all outputs  (Ollama)
+    2. gemma3       → Gemma 3 pre-scan of the fundus image  (Ollama)
+    3. routing      → FunctionGemma tool routing  (Ollama); advisory only
+    4. paligemma    → PaliGemma vision analysis  (``OPTIASSIST_PALIGEMMA_URL``)
+    5. medgemma     → MedGemma structured diagnosis  (Ollama ``medgemma`` by default;
+                       see ``agents/diagnosis.py`` / ``backend/ollama/Modelfile``)
+    6. synthesis    → Gemma 3 clinical summary over all outputs  (Ollama)
 
 Steps 4–5 run for ``/api/analyze`` by default (``OPTIASSIST_FULL_PIPELINE=1``)
 so MedGemma always receives PaliGemma output. Set ``OPTIASSIST_FULL_PIPELINE=0``
 to follow FunctionGemma’s tool list only.
 
-Inference delegation (set in backend/.env):
+Inference (``backend/.env`` — see ``backend/.env.example``):
 
-    OPTIASSIST_PALIGEMMA_URL=http://localhost:8080   → serve_paligemma.py
-    OPTIASSIST_MEDGEMMA_URL=http://localhost:8081     → serve_medgemma.py
+    OPTIASSIST_PALIGEMMA_URL=http://localhost:8080   → PaliGemma server
+
+    MedGemma (step 5): leave ``OPTIASSIST_MEDGEMMA_URL`` unset to use Ollama
+    (default). Model tag ``OPTIASSIST_MEDGEMMA_OLLAMA_MODEL=medgemma``.
+    Optional: ``OPTIASSIST_MEDGEMMA_URL=http://localhost:8081`` → serve_medgemma.py
+    Optional: ``OPTIASSIST_MEDGEMMA_BACKEND=hf`` → HuggingFace in-process
+
+    Ollama: ``OPTIASSIST_OLLAMA_CHAT_URL`` (prescan, FunctionGemma, MedGemma);
+    ``OPTIASSIST_OLLAMA_GENERATE_URL`` (step 6 summary in ``merger.py``)
 """
 
 import sys
@@ -57,8 +65,14 @@ app.add_middleware(
 )
 
 # ── Ollama config ────────────────────────────────────────────────────
-OLLAMA_URL = "http://localhost:11434/api/chat"
-FUNCTIONGEMMA_MODEL = "functiongemma"
+OLLAMA_URL = os.environ.get(
+    "OPTIASSIST_OLLAMA_CHAT_URL",
+    "http://localhost:11434/api/chat",
+)
+FUNCTIONGEMMA_MODEL = os.environ.get(
+    "OPTIASSIST_FUNCTIONGEMMA_MODEL",
+    "functiongemma",
+)
 
 # ── SSE helper ───────────────────────────────────────────────────────
 

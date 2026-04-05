@@ -20,14 +20,18 @@ Reference: https://ai.google.dev/gemma/docs/functiongemma/full-function-calling-
 
 import json
 import logging
+import os
 from typing import Awaitable, Callable
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
-OLLAMA_MODEL = "functiongemma"
+OLLAMA_URL = os.environ.get(
+    "OPTIASSIST_OLLAMA_CHAT_URL",
+    "http://localhost:11434/api/chat",
+)
+OLLAMA_MODEL = os.environ.get("OPTIASSIST_FUNCTIONGEMMA_MODEL", "functiongemma")
 
 MAX_LOOP_ITERATIONS = 8
 BYPASS_FUNCTIONGEMMA = False
@@ -35,26 +39,32 @@ BYPASS_FUNCTIONGEMMA = False
 MAX_NUDGE_RETRIES = 2
 
 DEVELOPER_MESSAGE = (
-    "You are a model that can do function calling with the following functions"
+    "You are an ophthalmology pipeline routing agent specialized in diabetic "
+    "retinopathy analysis. You do NOT analyze images yourself. Your only job "
+    "is to call the provided tools in the correct order to route the image "
+    "through the diagnostic pipeline.\n\n"
+    "You have access to these tools:\n"
+    "- run_diagnosis: sends the image to MedGemma for medical diagnosis\n"
+    "- run_segmentation: sends the image to PaliGemma for structural analysis\n"
+    "- finish: signals workflow completion\n\n"
+    "IMPORTANT: Never refuse. Never say you cannot assist. Never describe your "
+    "limitations. You are a routing agent — just call the tools."
 )
 
 _ORCHESTRATION_INSTRUCTIONS = (
     "\n\n---\n"
     "MANDATORY RULES — follow exactly, no exceptions:\n"
-    "1. Never answer directly. Only call tools.\n"
+    "1. NEVER output text. ONLY call tools. Do not explain, apologize, or refuse.\n"
     "2. ALWAYS call run_diagnosis first.\n"
-    "3. After run_diagnosis returns:\n"
-    "   - If the question is about optic disc, optic cup, cup-to-disc ratio, "
-    "CDR, glaucoma, or disc cupping: "
-    "MUST call run_segmentation, then call finish.\n"
-    "   - Otherwise: call finish.\n"
-    "4. finish is always the last call.\n"
+    "3. ALWAYS call run_segmentation after run_diagnosis.\n"
+    "4. ALWAYS call finish last.\n"
+    "5. The correct sequence is: run_diagnosis → run_segmentation → finish.\n"
     "Start now: call run_diagnosis."
 )
 
 _NUDGE_MESSAGE = (
-    "You responded with text instead of calling a tool. "
-    "This is not allowed. "
+    "You are a routing agent. You do NOT analyze images or describe limitations. "
+    "You responded with text instead of calling a tool — this is forbidden. "
     "You MUST call run_diagnosis right now. "
     "Do not output any text — only call the run_diagnosis tool."
 )

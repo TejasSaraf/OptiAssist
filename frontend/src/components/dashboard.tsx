@@ -11,6 +11,7 @@ import {
   Loader2,
   MessageSquare,
   Microscope,
+  Sparkles,
   X,
   Zap,
 } from "lucide-react";
@@ -24,6 +25,10 @@ type StageStatus = "idle" | "running" | "complete" | "error" | "skipped";
 interface StageState {
   status: StageStatus;
   message: string;
+  /** Shown while status is running; cleared when the stage finishes */
+  thinking: string | null;
+  /** SSE `data` payload after complete / error (live + fallback before `results`) */
+  output: unknown;
 }
 
 interface DiagnosisResult {
@@ -82,7 +87,12 @@ function createInitialStages(): Record<string, StageState> {
   return Object.fromEntries(
     STAGE_ORDER.map((id) => [
       id,
-      { status: "idle" as StageStatus, message: "Pending" },
+      {
+        status: "idle" as StageStatus,
+        message: "Pending",
+        thinking: null,
+        output: null,
+      },
     ]),
   );
 }
@@ -145,15 +155,34 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
     setImageDims(`${naturalWidth} × ${naturalHeight}px`);
   };
 
-  const updateStage = (
+  const applyStageUpdate = (
     stageId: string,
     status: StageStatus,
     message: string,
+    data?: unknown,
   ) => {
-    setStages((current) => ({
-      ...current,
-      [stageId]: { status, message },
-    }));
+    setStages((current) => {
+      const prev = current[stageId] ?? {
+        status: "idle" as StageStatus,
+        message: "",
+        thinking: null,
+        output: null,
+      };
+      let thinking: string | null = prev.thinking;
+      let output: unknown = prev.output;
+      if (status === "running") {
+        thinking = message;
+      } else {
+        thinking = null;
+        if (data !== undefined) {
+          output = data;
+        }
+      }
+      return {
+        ...current,
+        [stageId]: { status, message, thinking, output },
+      };
+    });
   };
 
   const processSseEvent = (block: string) => {
@@ -175,13 +204,15 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
       results?: AnalysisResults;
       id?: string;
       status?: StageStatus;
+      data?: unknown;
     };
 
     if (eventName === "stage" && payload.id && payload.status) {
-      updateStage(
+      applyStageUpdate(
         payload.id,
         payload.status,
         payload.message ?? "Updated",
+        payload.data,
       );
       return;
     }
@@ -287,10 +318,17 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
   const activeSubtext = activeId
     ? stages[activeId]?.message ?? "Working…"
     : results
-      ? "Full pipeline output is on the right."
-      : "Upload a fundus image and run analysis.";
+      ? "Each model’s output is below; thinking was shown live during the run."
+      : isAnalyzing
+        ? "Watch the right panel for each model’s thinking, then its output."
+        : "Upload a fundus image and run analysis.";
 
   const showProcessingBadge = isAnalyzing;
+  const hasStaleTrace = STAGE_ORDER.some(
+    (id) => stages[id] != null && stages[id].status !== "idle",
+  );
+  const showTrace =
+    isAnalyzing || results != null || hasStaleTrace;
 
   const renderStagePill = (id: StageId) => {
     const st = stages[id]?.status ?? "idle";
@@ -320,6 +358,196 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
         )}
         {STAGE_LABELS[id]}
       </span>
+    );
+  };
+
+  const renderPipelineStageBody = (id: StageId, stage: StageState) => {
+    if (stage.status === "running") {
+      return (
+        <div
+          className="rounded-lg border border-violet-500/35 bg-violet-950/25 px-3 py-3"
+          style={{
+            boxShadow: "0 0 24px rgba(139, 92, 246, 0.12)",
+          }}
+        >
+          <div className="mb-2 flex items-center gap-2 text-violet-200">
+            <Sparkles className="h-4 w-4 shrink-0 text-violet-400" />
+            <span className="text-[11px] font-bold uppercase tracking-wider">
+              Model thinking
+            </span>
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
+          </div>
+          <p className="thinking-stream text-sm leading-relaxed text-violet-100/90">
+            {stage.thinking ?? stage.message}
+          </p>
+        </div>
+      );
+    }
+
+    if (stage.status === "error") {
+      return (
+        <p className="text-sm text-red-300">{stage.message}</p>
+      );
+    }
+
+    if (stage.status === "skipped") {
+      return (
+        <p className="text-sm text-zinc-500 italic">{stage.message}</p>
+      );
+    }
+
+    if (stage.status === "idle") {
+      if (isAnalyzing) {
+        return (
+          <p className="text-xs text-zinc-600">Waiting for pipeline…</p>
+        );
+      }
+      if (hasStaleTrace && results == null) {
+        return (
+          <p className="text-xs text-zinc-600 italic">Not reached.</p>
+        );
+      }
+      return null;
+    }
+
+    /* complete — output only (thinking already cleared) */
+    if (id === "input") {
+      return (
+        <div>
+          <p className="leading-relaxed text-zinc-300">{question}</p>
+          <p className="mt-2 text-xs text-zinc-500">{stage.message}</p>
+        </div>
+      );
+    }
+
+    if (id === "gemma3") {
+      const text =
+        (results?.prescan as string | undefined) ??
+        (typeof stage.output === "string" ? stage.output : null);
+      if (!text)
+        return <p className="text-xs text-zinc-500">No pre-scan text.</p>;
+      return <p className="leading-relaxed text-zinc-300">{text}</p>;
+    }
+
+    if (id === "routing") {
+      const extra =
+        stage.output &&
+        typeof stage.output === "object" &&
+        stage.output !== null &&
+        "run_segmentation" in stage.output
+          ? (stage.output as Record<string, unknown>)
+          : null;
+      return (
+        <div>
+          {extra ? (
+            <pre className="max-h-32 overflow-auto rounded-lg bg-black/40 p-2 text-[10px] text-zinc-500">
+              {JSON.stringify(
+                {
+                  run_segmentation: extra.run_segmentation,
+                  run_diagnosis: extra.run_diagnosis,
+                  advisory_segmentation: extra.advisory_segmentation,
+                  advisory_diagnosis: extra.advisory_diagnosis,
+                },
+                null,
+                2,
+              )}
+            </pre>
+          ) : (
+            <p className="text-sm text-zinc-400">
+              {stage.message || "Routing complete."}
+            </p>
+          )}
+        </div>
+      );
+    }
+
+    if (id === "paligemma") {
+      const seg = results?.segmentation;
+      const o = stage.output as
+        | {
+            summary?: string;
+            raw_output?: string;
+            detections_count?: number;
+          }
+        | undefined;
+      const summary = seg?.summary ?? o?.summary;
+      const raw = seg?.raw_output ?? o?.raw_output;
+      const n =
+        (seg?.detections?.length ?? o?.detections_count ?? null) as
+          | number
+          | null;
+      if (!summary && !raw && n == null) {
+        return (
+          <p className="text-xs text-zinc-500">No PaliGemma output yet.</p>
+        );
+      }
+      return (
+        <div>
+          {summary && (
+            <p className="mb-2 leading-relaxed text-zinc-300">{summary}</p>
+          )}
+          {raw && (
+            <details className="mt-1">
+              <summary className="cursor-pointer text-xs text-[#22c55e]">
+                Raw model output
+              </summary>
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-black/50 p-3 text-[11px] text-zinc-500">
+                {raw}
+              </pre>
+            </details>
+          )}
+          {n != null && (
+            <p className="mt-2 text-xs text-zinc-600">
+              Detections: {n} region(s)
+            </p>
+          )}
+        </div>
+      );
+    }
+
+    if (id === "medgemma") {
+      const d = results?.diagnosis ?? (stage.output as DiagnosisResult | null);
+      if (!d || typeof d !== "object") {
+        return (
+          <p className="text-xs text-zinc-500">No diagnosis payload.</p>
+        );
+      }
+      return (
+        <div>
+          {d.findings && d.findings.length > 0 ? (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                Findings
+              </p>
+              <ul className="list-inside list-disc space-y-1 text-zinc-300">
+                {d.findings.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-xs text-zinc-500">No findings reported.</p>
+          )}
+        </div>
+      );
+    }
+
+    if (id === "synthesis") {
+      const text =
+        results?.synthesis?.trim() ??
+        (typeof stage.output === "string" ? stage.output : null);
+      if (!text) {
+        return (
+          <p className="text-xs text-zinc-500">No summary generated.</p>
+        );
+      }
+      return (
+        <p className="text-base leading-relaxed text-zinc-100">{text}</p>
+      );
+    }
+
+    return (
+      <p className="text-xs text-zinc-500">{stage.message}</p>
     );
   };
 
@@ -568,12 +796,12 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
 
             <div
               className={`flex flex-col items-center justify-center pb-6 ${
-                results ? "py-4" : "flex-1 pb-8"
+                showTrace ? "py-4" : "flex-1 pb-8"
               }`}
             >
               <div
                 className={`relative flex items-center justify-center ${
-                  results
+                  showTrace
                     ? "mb-4 h-28 w-28 md:h-32 md:w-32"
                     : "mb-8 h-48 w-48 md:h-56 md:w-56"
                 }`}
@@ -595,7 +823,9 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
                 />
                 <div
                   className={`relative flex items-center justify-center rounded-full ${
-                    results ? "h-16 w-16 md:h-20 md:w-20" : "h-28 w-28 md:h-32 md:w-32"
+                    showTrace
+                      ? "h-16 w-16 md:h-20 md:w-20"
+                      : "h-28 w-28 md:h-32 md:w-32"
                   }`}
                   style={{
                     background:
@@ -606,7 +836,7 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
                 >
                   <Microscope
                     className="text-[#22c55e]"
-                    size={results ? 28 : 44}
+                    size={showTrace ? 28 : 44}
                     strokeWidth={1.75}
                   />
                 </div>
@@ -614,7 +844,7 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
 
               <h3
                 className={`mb-2 text-center font-bold tracking-tight text-white ${
-                  results ? "text-lg md:text-xl" : "text-2xl md:text-3xl"
+                  showTrace ? "text-lg md:text-xl" : "text-2xl md:text-3xl"
                 }`}
               >
                 {activeLabel}
@@ -636,133 +866,58 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
               </div>
             </div>
 
-            {results && (
-              <div className="custom-scrollbar relative z-[1] mx-auto mt-2 flex min-h-[200px] w-full max-w-3xl flex-1 flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-black/40 backdrop-blur-sm md:max-w-4xl md:min-h-[280px]">
+            {showTrace && (
+              <div className="custom-scrollbar relative z-[1] mx-auto mt-2 flex min-h-[220px] w-full max-w-3xl flex-1 flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-black/40 backdrop-blur-sm md:max-w-4xl md:min-h-[300px]">
                 <div className="overflow-y-auto p-5 text-sm">
-                  <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-[#22c55e]">
-                    Pipeline results
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-[#22c55e]">
+                    {isAnalyzing ? "Live model trace" : "Pipeline results"}
+                  </p>
+                  <p className="mb-4 text-[11px] text-zinc-500">
+                    While a step runs you&apos;ll see{" "}
+                    <span className="text-violet-400">model thinking</span>; when
+                    it finishes, that hides and the step&apos;s output stays below.
                   </p>
 
-                  <section className="mb-5 rounded-xl border border-[#22c55e]/25 bg-[#22c55e]/[0.06] p-4">
-                    <h4 className="mb-1 text-[11px] font-bold uppercase tracking-wider text-[#86efac]">
-                      6 · Gemma 3 — Clinical summary
-                    </h4>
-                    <p className="text-base leading-relaxed text-zinc-100">
-                      {results.synthesis?.trim() ||
-                        "No summary was returned. Check Ollama (gemma3) and merger logs."}
-                    </p>
-                  </section>
+                  {STAGE_ORDER.map((id) => {
+                    const stage = stages[id] ?? {
+                      status: "idle" as StageStatus,
+                      message: "",
+                      thinking: null,
+                      output: null,
+                    };
+                    const stepNum = STAGE_ORDER.indexOf(id) + 1;
+                    const highlightSynth =
+                      id === "synthesis" &&
+                      stage.status === "complete" &&
+                      Boolean(results);
+                    const hideIdlePending =
+                      stage.status === "idle" &&
+                      !isAnalyzing &&
+                      results == null &&
+                      !hasStaleTrace;
 
-                  <section className="mb-4 rounded-xl border border-white/[0.08] bg-black/30 p-4">
-                    <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                      1 · Input
-                    </h4>
-                    <p className="text-zinc-300">{question}</p>
-                  </section>
+                    if (hideIdlePending) return null;
 
-                  {results.prescan != null && results.prescan !== "" && (
-                    <section className="mb-4 rounded-xl border border-white/[0.08] bg-black/30 p-4">
-                      <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                        2 · Gemma 3 — Pre-scan
-                      </h4>
-                      <p className="leading-relaxed text-zinc-300">
-                        {results.prescan}
-                      </p>
-                    </section>
-                  )}
-
-                  {results.routing != null && results.routing !== "" && (
-                    <section className="mb-4 rounded-xl border border-white/[0.08] bg-black/30 p-4">
-                      <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                        3 · FunctionGemma — Routing
-                      </h4>
-                      <p className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-zinc-400">
-                        {results.routing}
-                      </p>
-                      <p className="mt-2 text-[11px] text-zinc-600">
-                        Full PaliGemma + MedGemma stages always run so MedGemma
-                        can use PaliGemma output.
-                      </p>
-                    </section>
-                  )}
-
-                  {results.segmentation && (
-                    <section className="mb-4 rounded-xl border border-white/[0.08] bg-black/30 p-4">
-                      <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                        4 · PaliGemma 2 — What&apos;s in the image
-                      </h4>
-                      {results.segmentation.summary && (
-                        <p className="mb-2 leading-relaxed text-zinc-300">
-                          {results.segmentation.summary}
-                        </p>
-                      )}
-                      {results.segmentation.raw_output && (
-                        <details className="mt-2">
-                          <summary className="cursor-pointer text-xs text-[#22c55e]">
-                            Raw model output
-                          </summary>
-                          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-black/50 p-3 text-[11px] text-zinc-500">
-                            {results.segmentation.raw_output}
-                          </pre>
-                        </details>
-                      )}
-                      <p className="mt-2 text-xs text-zinc-600">
-                        Detections:{" "}
-                        {(results.segmentation.detections ?? []).length} region(s)
-                      </p>
-                    </section>
-                  )}
-
-                  {results.diagnosis && (
-                    <section className="mb-2 rounded-xl border border-white/[0.08] bg-black/30 p-4">
-                      <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                        5 · MedGemma 4B — Diagnosis (uses PaliGemma context)
-                      </h4>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div>
-                          <p className="text-xs text-zinc-500">Condition</p>
-                          <p className="font-semibold text-white">
-                            {results.diagnosis.condition ?? "—"}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-zinc-500">Severity</p>
-                          <p className="font-semibold text-white">
-                            {results.diagnosis.severity ?? "—"}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-zinc-500">Confidence</p>
-                          <p className="font-semibold text-white">
-                            {typeof results.diagnosis.confidence === "number"
-                              ? `${Math.round(results.diagnosis.confidence * 100)}%`
-                              : "—"}
-                          </p>
-                        </div>
-                      </div>
-                      {results.diagnosis.findings &&
-                        results.diagnosis.findings.length > 0 && (
-                          <div className="mt-3">
-                            <p className="mb-1 text-xs text-zinc-500">Findings</p>
-                            <ul className="list-inside list-disc text-zinc-400">
-                              {results.diagnosis.findings.map((f) => (
-                                <li key={f}>{f}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      {results.diagnosis.recommendation && (
-                        <div className="mt-3 border-t border-white/[0.06] pt-3">
-                          <p className="mb-1 text-xs text-zinc-500">
-                            Recommendation
-                          </p>
-                          <p className="text-zinc-300">
-                            {results.diagnosis.recommendation}
-                          </p>
-                        </div>
-                      )}
-                    </section>
-                  )}
+                    return (
+                      <section
+                        key={id}
+                        className={`mb-4 rounded-xl border p-4 last:mb-0 ${
+                          highlightSynth
+                            ? "border-[#22c55e]/30 bg-[#22c55e]/[0.07]"
+                            : "border-white/[0.08] bg-black/30"
+                        }`}
+                      >
+                        <h4
+                          className={`mb-3 text-[11px] font-bold uppercase tracking-wider ${
+                            highlightSynth ? "text-[#86efac]" : "text-zinc-500"
+                          }`}
+                        >
+                          {stepNum} · {STAGE_LABELS[id]}
+                        </h4>
+                        {renderPipelineStageBody(id, stage)}
+                      </section>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -774,6 +929,13 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
         @keyframes dashboard-pulse {
           0%, 100% { opacity: 0.5; transform: scale(1); }
           50% { opacity: 1; transform: scale(1.02); }
+        }
+        @keyframes thinking-shimmer {
+          0%, 100% { opacity: 0.85; }
+          50% { opacity: 1; }
+        }
+        .thinking-stream {
+          animation: thinking-shimmer 2s ease-in-out infinite;
         }
       `}</style>
     </div>

@@ -54,5 +54,8 @@ out.txt
 # Additional macOS/Dataset Metadata
 ._*
 
+# Ollama local models (large GGUF files)
+backend/ollama/
+
 # AI Agent Data
 .agent/workflows/

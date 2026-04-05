@@ -8,16 +8,28 @@ passed downstream to the router to help select the appropriate analysis path.
 
 import base64
 import logging
+import os
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
-OLLAMA_MODEL = "gemma3:4b"
+OLLAMA_URL = os.environ.get(
+    "OPTIASSIST_OLLAMA_CHAT_URL",
+    "http://localhost:11434/api/chat",
+)
+OLLAMA_MODEL = os.environ.get("OPTIASSIST_GEMMA3_PRESCAN_MODEL", "gemma3:4b")
 PRESCAN_PROMPT = (
-    "Describe this medical retinal image in 1-2 sentences. "
-    "Focus on visible structures and any abnormalities. Be factual and concise."
+    "You are an expert ophthalmology image analysis assistant specializing in "
+    "diabetic retinopathy screening.\n\n"
+    "Analyze this retinal fundus image. Describe the visible anatomical "
+    "structures (optic disc, macula, retinal vasculature) and identify any "
+    "pathological signs relevant to diabetic retinopathy such as "
+    "microaneurysms, hard exudates, cotton-wool spots, hemorrhages, "
+    "neovascularization, or macular edema.\n\n"
+    "Be factual, clinical, and concise (2-3 sentences). "
+    "Do NOT add any disclaimer, legal notice, or statement about not being "
+    "a medical professional. Output only the clinical description."
 )
 FALLBACK_DESCRIPTION = "Retinal fundus image"
 
