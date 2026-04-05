@@ -1,29 +1,29 @@
 """
-OptiAssist Backend — 6-stage linear pipeline (``POST /api/analyze``)
+OpusAI Backend — 6-stage linear pipeline (``POST /api/analyze``)
 
     1. input        → Image + prompt accepted
     2. gemma3       → Gemma 3 pre-scan of the fundus image  (Ollama)
     3. routing      → FunctionGemma tool routing  (Ollama); advisory only
-    4. paligemma    → PaliGemma vision analysis  (``OPTIASSIST_PALIGEMMA_URL``)
+    4. paligemma    → PaliGemma vision analysis  (``OpusAI_PALIGEMMA_URL``)
     5. medgemma     → MedGemma structured diagnosis  (Ollama ``medgemma`` by default;
                        see ``agents/diagnosis.py`` / ``backend/ollama/Modelfile``)
     6. synthesis    → Gemma 3 clinical summary over all outputs  (Ollama)
 
-Steps 4–5 run for ``/api/analyze`` by default (``OPTIASSIST_FULL_PIPELINE=1``)
-so MedGemma always receives PaliGemma output. Set ``OPTIASSIST_FULL_PIPELINE=0``
+Steps 4–5 run for ``/api/analyze`` by default (``OpusAI_FULL_PIPELINE=1``)
+so MedGemma always receives PaliGemma output. Set ``OpusAI_FULL_PIPELINE=0``
 to follow FunctionGemma’s tool list only.
 
 Inference (``backend/.env`` — see ``backend/.env.example``):
 
-    OPTIASSIST_PALIGEMMA_URL=http://localhost:8080   → PaliGemma server
+    OpusAI_PALIGEMMA_URL=http://localhost:8080   → PaliGemma server
 
-    MedGemma (step 5): leave ``OPTIASSIST_MEDGEMMA_URL`` unset to use Ollama
-    (default). Model tag ``OPTIASSIST_MEDGEMMA_OLLAMA_MODEL=medgemma``.
-    Optional: ``OPTIASSIST_MEDGEMMA_URL=http://localhost:8081`` → serve_medgemma.py
-    Optional: ``OPTIASSIST_MEDGEMMA_BACKEND=hf`` → HuggingFace in-process
+    MedGemma (step 5): leave ``OpusAI_MEDGEMMA_URL`` unset to use Ollama
+    (default). Model tag ``OpusAI_MEDGEMMA_OLLAMA_MODEL=medgemma``.
+    Optional: ``OpusAI_MEDGEMMA_URL=http://localhost:8081`` → serve_medgemma.py
+    Optional: ``OpusAI_MEDGEMMA_BACKEND=hf`` → HuggingFace in-process
 
-    Ollama: ``OPTIASSIST_OLLAMA_CHAT_URL`` (prescan, FunctionGemma, MedGemma);
-    ``OPTIASSIST_OLLAMA_GENERATE_URL`` (step 6 summary in ``merger.py``)
+    Ollama: ``OpusAI_OLLAMA_CHAT_URL`` (prescan, FunctionGemma, MedGemma);
+    ``OpusAI_OLLAMA_GENERATE_URL`` (step 6 summary in ``merger.py``)
 """
 
 import sys
@@ -36,7 +36,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env BEFORE importing agents — they read OPTIASSIST_* at call time.
+# Load .env BEFORE importing agents — they read OpusAI_* at call time.
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from fastapi import FastAPI, UploadFile, File, Form
@@ -55,7 +55,7 @@ from agents.merger import merge_results
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="OptiAssist Backend API")
+app = FastAPI(title="OpusAI Backend API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -66,11 +66,11 @@ app.add_middleware(
 
 # ── Ollama config ────────────────────────────────────────────────────
 OLLAMA_URL = os.environ.get(
-    "OPTIASSIST_OLLAMA_CHAT_URL",
+    "OpusAI_OLLAMA_CHAT_URL",
     "http://localhost:11434/api/chat",
 )
 FUNCTIONGEMMA_MODEL = os.environ.get(
-    "OPTIASSIST_FUNCTIONGEMMA_MODEL",
+    "OpusAI_FUNCTIONGEMMA_MODEL",
     "functiongemma",
 )
 
@@ -84,7 +84,7 @@ def _sse(event: str, data) -> str:
 
 @app.get("/")
 def root():
-    return {"status": "OptiAssist API is running"}
+    return {"status": "OpusAI API is running"}
 
 # ── FunctionGemma single-turn routing ────────────────────────────────
 
@@ -210,13 +210,13 @@ async def analyze(
                 results["routing"] = route
                 advisory_seg, advisory_diag = _parse_route_flags(route)
                 force_full = os.environ.get(
-                    "OPTIASSIST_FULL_PIPELINE", "1",
+                    "OpusAI_FULL_PIPELINE", "1",
                 ).strip().lower() in ("1", "true", "yes", "on")
                 if force_full:
                     run_seg, run_diag = True, True
                     logger.info(
                         "Pipeline: FunctionGemma advisory seg=%s diag=%s — "
-                        "OPTIASSIST_FULL_PIPELINE=1, running full PaliGemma + MedGemma",
+                        "OpusAI_FULL_PIPELINE=1, running full PaliGemma + MedGemma",
                         advisory_seg,
                         advisory_diag,
                     )
@@ -224,7 +224,7 @@ async def analyze(
                     run_seg, run_diag = advisory_seg, advisory_diag
                     logger.info(
                         "Pipeline: respecting router seg=%s diag=%s "
-                        "(set OPTIASSIST_FULL_PIPELINE=1 for always-on)",
+                        "(set OpusAI_FULL_PIPELINE=1 for always-on)",
                         run_seg,
                         run_diag,
                     )

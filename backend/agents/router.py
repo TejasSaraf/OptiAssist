@@ -3,7 +3,7 @@ from __future__ import annotations
 """
 router.py
 
-Implements a multi-turn FunctionGemma agentic loop for OptiAssist.
+Implements a multi-turn FunctionGemma agentic loop for OpusAI.
 
 FunctionGemma maintains a messages conversation history and autonomously decides
 which tools to call and in what order, until it either returns a plain text
@@ -28,10 +28,10 @@ import httpx
 logger = logging.getLogger(__name__)
 
 OLLAMA_URL = os.environ.get(
-    "OPTIASSIST_OLLAMA_CHAT_URL",
+    "OpusAI_OLLAMA_CHAT_URL",
     "http://localhost:11434/api/chat",
 )
-OLLAMA_MODEL = os.environ.get("OPTIASSIST_FUNCTIONGEMMA_MODEL", "functiongemma")
+OLLAMA_MODEL = os.environ.get("OpusAI_FUNCTIONGEMMA_MODEL", "functiongemma")
 
 MAX_LOOP_ITERATIONS = 8
 BYPASS_FUNCTIONGEMMA = False

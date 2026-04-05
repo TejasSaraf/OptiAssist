@@ -21,28 +21,28 @@ Setup (one-time):
     3. modal secret create hf-secret HF_TOKEN=hf_your_token_here
 
 Upload data & run:
-    4. modal volume create optiassist-data   # (skip if already exists)
-    5. modal volume put optiassist-data data/finetune/medgemma/ /data/finetune/medgemma/
-    6. modal volume put optiassist-data data/Imagenes/ /data/Imagenes/
-    7. modal volume put optiassist-data data/dr_unified_v2/ /data/dr_unified_v2/
+    4. modal volume create OpusAI-data   # (skip if already exists)
+    5. modal volume put OpusAI-data data/finetune/medgemma/ /data/finetune/medgemma/
+    6. modal volume put OpusAI-data data/Imagenes/ /data/Imagenes/
+    7. modal volume put OpusAI-data data/dr_unified_v2/ /data/dr_unified_v2/
        # (JSONL refs dr_unified_v2_sampled/ → remapped to dr_unified_v2/ at runtime)
     8. modal run backend/scripts/modal_train_medgemma.py
 
 Download results:
     9. mkdir -p checkpoints/medgemma
-       modal volume get optiassist-checkpoints medgemma/final ./checkpoints/medgemma/
+       modal volume get OpusAI-checkpoints medgemma/final ./checkpoints/medgemma/
 """
 
 import modal
 
 
-app = modal.App("optiassist-medgemma-train")
+app = modal.App("OpusAI-medgemma-train")
 
 model_cache = modal.Volume.from_name(
-    "optiassist-model-cache", create_if_missing=True)
-data_vol = modal.Volume.from_name("optiassist-data", create_if_missing=True)
+    "OpusAI-model-cache", create_if_missing=True)
+data_vol = modal.Volume.from_name("OpusAI-data", create_if_missing=True)
 checkpoints_vol = modal.Volume.from_name(
-    "optiassist-checkpoints", create_if_missing=True)
+    "OpusAI-checkpoints", create_if_missing=True)
 
 
 train_image = (
@@ -568,4 +568,4 @@ def main(
         print(f"  Eval loss:     {result['eval_metrics'].get('eval_loss', 'N/A')}")
     print(f"\nDownload adapters:")
     print(f"  mkdir -p checkpoints/medgemma && \\")
-    print(f"  modal volume get optiassist-checkpoints medgemma/final ./checkpoints/medgemma/")
+    print(f"  modal volume get OpusAI-checkpoints medgemma/final ./checkpoints/medgemma/")

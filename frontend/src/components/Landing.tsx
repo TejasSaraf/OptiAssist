@@ -27,7 +27,7 @@ export default function Landing({ onStart }: LandingProps) {
             <Activity className="w-6 h-6 text-green-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">OptiAssist</h1>
+            <h1 className="text-xl font-bold text-white tracking-tight">OpusAI</h1>
             <p className="text-[10px] text-green-500/80 font-semibold tracking-[0.2em] uppercase mt-0.5">
               Agentic Diagnostic AI
             </p>
@@ -53,7 +53,7 @@ export default function Landing({ onStart }: LandingProps) {
         </h2>
 
         <p className="text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto mb-12 leading-relaxed">
-          OptiAssist orchestrates a specialized team of AI models—Gemma 3, PaliGemma 2, MedGemma, and
+          OpusAI orchestrates a specialized team of AI models—Gemma 3, PaliGemma 2, MedGemma, and
           FunctionGemma—to autonomously pre-scan, segment, and diagnose retinal fundus images.
         </p>
 
@@ -115,7 +115,7 @@ export default function Landing({ onStart }: LandingProps) {
           <Network className="w-4 h-4 text-green-500/80" />
           <span>Local execution — QLoRA-capable pipeline</span>
         </div>
-        <p className="text-zinc-600">© 2026 OptiAssist Diagnostics. Local inference mode.</p>
+        <p className="text-zinc-600">© 2026 OpusAI Diagnostics. Local inference mode.</p>
       </footer>
     </div>
   );

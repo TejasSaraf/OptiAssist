@@ -1,1 +1,1 @@
-# OptiAssist application package
+# OpusAI application package

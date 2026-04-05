@@ -5,7 +5,7 @@ segmenter.py
 
 PaliGemma agent — retinal image analysis via fine-tuned PaliGemma.
 
-When OPTIASSIST_PALIGEMMA_URL is set (e.g. http://localhost:8080), inference
+When OpusAI_PALIGEMMA_URL is set (e.g. http://localhost:8080), inference
 is delegated to the dedicated serve_paligemma.py server via HTTP. Otherwise
 the merged model is loaded in-process from backend/models/paligemma-finetuned/.
 """
@@ -125,7 +125,7 @@ async def run_segmentation(image_bytes: bytes, query: str = _DEFAULT_PROMPT) -> 
     """
     Analyze a retinal fundus image using the fine-tuned PaliGemma model.
 
-    Routes to the HTTP server at OPTIASSIST_PALIGEMMA_URL when set,
+    Routes to the HTTP server at OpusAI_PALIGEMMA_URL when set,
     otherwise loads the merged model in-process.
     """
     try:
@@ -134,7 +134,7 @@ async def run_segmentation(image_bytes: bytes, query: str = _DEFAULT_PROMPT) -> 
     except Exception as e:
         raise RuntimeError(f"Failed to decode image: {e}") from e
 
-    pali_url = os.environ.get("OPTIASSIST_PALIGEMMA_URL", "").rstrip("/")
+    pali_url = os.environ.get("OpusAI_PALIGEMMA_URL", "").rstrip("/")
 
     logger.info(
         "PaliGemma — analyzing retinal image. image=%dx%d prompt=%r remote=%s",
@@ -149,7 +149,7 @@ async def run_segmentation(image_bytes: bytes, query: str = _DEFAULT_PROMPT) -> 
                 raise FileNotFoundError(
                     f"PaliGemma model not found at {_MODEL_DIR}. "
                     f"Run `python backend/scripts/merge_adapter.py` first, "
-                    f"or set OPTIASSIST_PALIGEMMA_URL."
+                    f"or set OpusAI_PALIGEMMA_URL."
                 )
             result = await asyncio.to_thread(_run_inference_sync, image_bytes, query)
     except (FileNotFoundError, ImportError):

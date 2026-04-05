@@ -10,15 +10,15 @@ Setup (one-time):
     3. modal secret create hf-secret HF_TOKEN=hf_your_token_here
 
 Upload data & run:
-    4. modal volume create optiassist-data
-    5. modal volume put optiassist-data data/finetune/ /data/finetune/
-    6. modal volume put optiassist-data data/Imagenes/ /data/Imagenes/
-    7. modal volume put optiassist-data data/dr_unified_v2/ /data/dr_unified_v2/
+    4. modal volume create OpusAI-data
+    5. modal volume put OpusAI-data data/finetune/ /data/finetune/
+    6. modal volume put OpusAI-data data/Imagenes/ /data/Imagenes/
+    7. modal volume put OpusAI-data data/dr_unified_v2/ /data/dr_unified_v2/
     8. modal run backend/scripts/modal_train_paligemma.py
 
 Download results (remote paths are relative to the volume root = container /checkpoints):
     9. mkdir -p checkpoints/paligemma
-       modal volume get optiassist-checkpoints paligemma/final ./checkpoints/paligemma/
+       modal volume get OpusAI-checkpoints paligemma/final ./checkpoints/paligemma/
        # → ./checkpoints/paligemma/final/adapter_model.safetensors, ...
        # Re-download: add --force, or rm -rf checkpoints/paligemma/final first.
 """
@@ -26,13 +26,13 @@ Download results (remote paths are relative to the volume root = container /chec
 import modal
 
 
-app = modal.App("optiassist-paligemma-train")
+app = modal.App("OpusAI-paligemma-train")
 
 model_cache = modal.Volume.from_name(
-    "optiassist-model-cache", create_if_missing=True)
-data_vol = modal.Volume.from_name("optiassist-data", create_if_missing=True)
+    "OpusAI-model-cache", create_if_missing=True)
+data_vol = modal.Volume.from_name("OpusAI-data", create_if_missing=True)
 checkpoints_vol = modal.Volume.from_name(
-    "optiassist-checkpoints", create_if_missing=True)
+    "OpusAI-checkpoints", create_if_missing=True)
 
 
 train_image = (
@@ -319,5 +319,5 @@ def main(
         print(
             f"  Final eval loss: {result['eval_metrics'].get('eval_loss', 'N/A')}")
     print(f"\nDownload adapters:")
-    print(f"  mkdir -p checkpoints/paligemma && modal volume get optiassist-checkpoints paligemma/final ./checkpoints/paligemma/")
+    print(f"  mkdir -p checkpoints/paligemma && modal volume get OpusAI-checkpoints paligemma/final ./checkpoints/paligemma/")
     print(f"  (re-download: add --force if ./checkpoints/paligemma/final already exists)")

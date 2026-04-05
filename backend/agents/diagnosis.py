@@ -6,22 +6,22 @@ diagnosis.py
 MedGemma diagnosis — structured JSON for a retinal fundus image.
 
 Backends (first match wins for step 5 in ``/api/analyze``):
-    1. OPTIASSIST_MEDGEMMA_URL set → HTTP to serve_medgemma.py (HF Transformers)
+    1. OpusAI_MEDGEMMA_URL set → HTTP to serve_medgemma.py (HF Transformers)
     2. Else default → Ollama ``/api/chat`` (same as Gemma 3 prescan / FunctionGemma).
-       Model tag: OPTIASSIST_MEDGEMMA_OLLAMA_MODEL (default ``medgemma``).
+       Model tag: OpusAI_MEDGEMMA_OLLAMA_MODEL (default ``medgemma``).
        Build the model from ``backend/ollama/Modelfile``.
-    3. OPTIASSIST_MEDGEMMA_BACKEND=hf  (or OPTIASSIST_USE_HF_MEDGEMMA=1)
+    3. OpusAI_MEDGEMMA_BACKEND=hf  (or OpusAI_USE_HF_MEDGEMMA=1)
        → HuggingFace Transformers in-process (google/medgemma-4b-it)
-    4. OPTIASSIST_USE_OLLAMA_MEDGEMMA=0 → skip Ollama and use HF when URL empty
+    4. OpusAI_USE_OLLAMA_MEDGEMMA=0 → skip Ollama and use HF when URL empty
 
 Device (HF full-precision only; CUDA 4-bit unchanged):
-    OPTIASSIST_MEDGEMMA_DEVICE   — cpu | cuda | mps | auto (default auto)
-    OPTIASSIST_MEDGEMMA_USE_MPS  — 1 to allow MPS when auto and no CUDA
+    OpusAI_MEDGEMMA_DEVICE   — cpu | cuda | mps | auto (default auto)
+    OpusAI_MEDGEMMA_USE_MPS  — 1 to allow MPS when auto and no CUDA
         (default 0: use CPU on Apple Silicon — avoids MPS placeholder bugs)
 
 Ollama env:
-    OPTIASSIST_OLLAMA_CHAT_URL       — default http://localhost:11434/api/chat
-    OPTIASSIST_MEDGEMMA_OLLAMA_MODEL — default medgemma
+    OpusAI_OLLAMA_CHAT_URL       — default http://localhost:11434/api/chat
+    OpusAI_MEDGEMMA_OLLAMA_MODEL — default medgemma
 
 Ollama model creation: see ``backend/ollama/Modelfile`` (GGUF + mmproj download,
 then ``cd backend/ollama && ollama create medgemma -f Modelfile``).
@@ -98,7 +98,7 @@ _medgemma_4bit = False  # tracks whether we loaded with quantization
 def _load_medgemma():
     """Load MedGemma via HuggingFace Transformers, with optional 4-bit quantization.
 
-    When ``OPTIASSIST_MEDGEMMA_4BIT`` is ``"1"`` (the default) **and** CUDA is
+    When ``OpusAI_MEDGEMMA_4BIT`` is ``"1"`` (the default) **and** CUDA is
     available, the model is loaded with NF4 4-bit quantization via
     ``BitsAndBytesConfig``.  This cuts VRAM from ~8 GB to ~2.5 GB and speeds up
     inference on consumer GPUs.
@@ -122,7 +122,7 @@ def _load_medgemma():
     hf_token = os.environ.get("HF_TOKEN")
 
     # ── Determine whether to use 4-bit quantization ───────────────────
-    want_4bit = os.environ.get("OPTIASSIST_MEDGEMMA_4BIT", "1").strip() == "1"
+    want_4bit = os.environ.get("OpusAI_MEDGEMMA_4BIT", "1").strip() == "1"
     use_4bit = want_4bit and torch.cuda.is_available()
 
     if want_4bit and not torch.cuda.is_available():
@@ -172,16 +172,16 @@ def _load_medgemma():
         # ── Full-precision loading (CUDA / optional MPS / CPU) ───────────
         # Apple MPS + Gemma multimodal pipelines often raise:
         #   Placeholder storage has not been allocated on MPS device!
-        # Default on Mac is therefore CPU unless OPTIASSIST_MEDGEMMA_USE_MPS=1
-        # or OPTIASSIST_MEDGEMMA_DEVICE=mps.
+        # Default on Mac is therefore CPU unless OpusAI_MEDGEMMA_USE_MPS=1
+        # or OpusAI_MEDGEMMA_DEVICE=mps.
         has_cuda = torch.cuda.is_available()
         has_mps = (
             hasattr(torch.backends, "mps")
             and torch.backends.mps.is_available()
         )
-        dev_pref = os.environ.get("OPTIASSIST_MEDGEMMA_DEVICE", "").strip().lower()
+        dev_pref = os.environ.get("OpusAI_MEDGEMMA_DEVICE", "").strip().lower()
         use_mps_flag = os.environ.get(
-            "OPTIASSIST_MEDGEMMA_USE_MPS", "0",
+            "OpusAI_MEDGEMMA_USE_MPS", "0",
         ).strip().lower() in ("1", "true", "yes", "on")
 
         if dev_pref == "cpu":
@@ -200,8 +200,8 @@ def _load_medgemma():
                 if has_mps and not use_mps_flag:
                     logger.warning(
                         "MedGemma: skipping MPS (multimodal instability). "
-                        "Using CPU. For Apple GPU try OPTIASSIST_MEDGEMMA_USE_MPS=1 "
-                        "or OPTIASSIST_MEDGEMMA_DEVICE=mps at your own risk."
+                        "Using CPU. For Apple GPU try OpusAI_MEDGEMMA_USE_MPS=1 "
+                        "or OpusAI_MEDGEMMA_DEVICE=mps at your own risk."
                     )
         else:
             backend = "cpu"
@@ -313,24 +313,24 @@ def _use_ollama_medgemma() -> bool:
     Default: Ollama (aligns with Gemma 3 + FunctionGemma on the same host).
 
     Use HuggingFace in-process instead:
-        OPTIASSIST_MEDGEMMA_BACKEND=hf
-        or OPTIASSIST_USE_HF_MEDGEMMA=1
-        or OPTIASSIST_USE_OLLAMA_MEDGEMMA=0
+        OpusAI_MEDGEMMA_BACKEND=hf
+        or OpusAI_USE_HF_MEDGEMMA=1
+        or OpusAI_USE_OLLAMA_MEDGEMMA=0
     """
-    backend = os.environ.get("OPTIASSIST_MEDGEMMA_BACKEND", "").strip().lower()
+    backend = os.environ.get("OpusAI_MEDGEMMA_BACKEND", "").strip().lower()
     if backend in ("hf", "transformers", "huggingface"):
         return False
     if backend == "ollama":
         return True
-    if os.environ.get("OPTIASSIST_USE_HF_MEDGEMMA", "").strip().lower() in (
+    if os.environ.get("OpusAI_USE_HF_MEDGEMMA", "").strip().lower() in (
         "1", "true", "yes", "on",
     ):
         return False
-    if os.environ.get("OPTIASSIST_USE_OLLAMA_MEDGEMMA", "").strip().lower() in (
+    if os.environ.get("OpusAI_USE_OLLAMA_MEDGEMMA", "").strip().lower() in (
         "0", "false", "no", "off",
     ):
         return False
-    if os.environ.get("OPTIASSIST_USE_OLLAMA_MEDGEMMA", "").strip().lower() in (
+    if os.environ.get("OpusAI_USE_OLLAMA_MEDGEMMA", "").strip().lower() in (
         "1", "true", "yes", "on",
     ):
         return True
@@ -348,11 +348,11 @@ async def _run_diagnosis_ollama(
     One user turn bundles system instructions + clinical text so templates stay happy.
     """
     ollama_url = os.environ.get(
-        "OPTIASSIST_OLLAMA_CHAT_URL",
+        "OpusAI_OLLAMA_CHAT_URL",
         "http://localhost:11434/api/chat",
     )
     model = os.environ.get(
-        "OPTIASSIST_MEDGEMMA_OLLAMA_MODEL",
+        "OpusAI_MEDGEMMA_OLLAMA_MODEL",
         "medgemma",
     )
     user_text = _build_diagnosis_user_text(
@@ -467,7 +467,7 @@ async def run_diagnosis(
     """
     # Check for remote inference: use HTTP only when the orchestrator set
     # the URL *and* we are NOT inside the serve_medgemma server process.
-    remote_url = os.environ.get("OPTIASSIST_MEDGEMMA_URL", "").rstrip("/")
+    remote_url = os.environ.get("OpusAI_MEDGEMMA_URL", "").rstrip("/")
     is_server = os.environ.get("_MEDGEMMA_SERVER_PROCESS", "")
     if remote_url and not is_server and image_bytes is not None:
         logger.info("MedGemma — remote inference via %s", remote_url)
