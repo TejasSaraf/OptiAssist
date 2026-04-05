@@ -6,15 +6,26 @@ import {
 } from "react";
 import {
   Activity,
+  Brain,
   CheckCircle2,
-  Image as ImageIcon,
+  ChevronRight,
+  Eye,
+  FileText,
+  GitBranch,
   Loader2,
   MessageSquare,
-  Microscope,
+  ScanEye,
+  Search,
   Sparkles,
+  Stethoscope,
+  Upload,
   X,
   Zap,
 } from "lucide-react";
+
+/* ── Brand tokens ─────────────────────────────────────────────── */
+const G = "#7fee64";
+const G_RGB = "127, 238, 100";
 
 interface DashboardProps {
   onBackHome: () => void;
@@ -25,9 +36,7 @@ type StageStatus = "idle" | "running" | "complete" | "error" | "skipped";
 interface StageState {
   status: StageStatus;
   message: string;
-  /** Shown while status is running; cleared when the stage finishes */
   thinking: string | null;
-  /** SSE `data` payload after complete / error (live + fallback before `results`) */
   output: unknown;
 }
 
@@ -48,7 +57,6 @@ interface SegmentationResult {
   annotated_image_base64?: string;
 }
 
-/** Matches backend `complete` payload `results` from /api/analyze */
 interface AnalysisResults {
   prescan?: string | null;
   routing?: string | null;
@@ -58,7 +66,7 @@ interface AnalysisResults {
 }
 
 const DEFAULT_QUESTION =
-  "What is the cup ti disc ration in this image?";
+  "What is the cup to disc ratio in this image?";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -83,6 +91,15 @@ const STAGE_LABELS: Record<StageId, string> = {
   synthesis: "Gemma 3 — Summary",
 };
 
+const STAGE_ICONS: Record<StageId, React.ReactNode> = {
+  input: <Upload size={14} />,
+  gemma3: <Eye size={14} />,
+  routing: <GitBranch size={14} />,
+  paligemma: <Search size={14} />,
+  medgemma: <Stethoscope size={14} />,
+  synthesis: <FileText size={14} />,
+};
+
 function createInitialStages(): Record<string, StageState> {
   return Object.fromEntries(
     STAGE_ORDER.map((id) => [
@@ -103,21 +120,6 @@ function isDone(status: StageStatus): boolean {
     status === "skipped" ||
     status === "error"
   );
-}
-
-function getActiveStageId(
-  stages: Record<string, StageState>,
-  analyzing: boolean,
-): StageId | null {
-  const running = STAGE_ORDER.find(
-    (id) => stages[id]?.status === "running",
-  );
-  if (running) return running;
-  if (!analyzing) return null;
-  const firstPending = STAGE_ORDER.find(
-    (id) => stages[id]?.status === "idle",
-  );
-  return firstPending ?? null;
 }
 
 export default function Dashboard({ onBackHome }: DashboardProps) {
@@ -309,75 +311,28 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
   const totalStages = STAGE_ORDER.length;
   const progressPct = (completedCount / totalStages) * 100;
 
-  const activeId = getActiveStageId(stages, isAnalyzing);
-  const activeLabel = activeId
-    ? STAGE_LABELS[activeId]
-    : results
-      ? "Analysis complete"
-      : "Ready";
-  const activeSubtext = activeId
-    ? stages[activeId]?.message ?? "Working…"
-    : results
-      ? "Each model’s output is below; thinking was shown live during the run."
-      : isAnalyzing
-        ? "Watch the right panel for each model’s thinking, then its output."
-        : "Upload a fundus image and run analysis.";
-
-  const showProcessingBadge = isAnalyzing;
   const hasStaleTrace = STAGE_ORDER.some(
     (id) => stages[id] != null && stages[id].status !== "idle",
   );
-  const showTrace =
-    isAnalyzing || results != null || hasStaleTrace;
 
-  const renderStagePill = (id: StageId) => {
-    const st = stages[id]?.status ?? "idle";
-    const isRun = st === "running";
-    const done = isDone(st);
-    return (
-      <span
-        key={id}
-        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold md:text-xs ${
-          isRun
-            ? "border-[#22c55e] bg-[#22c55e] text-black"
-            : done
-              ? "border-zinc-700 bg-zinc-900/80 text-[#22c55e]"
-              : "border-zinc-800 bg-zinc-900/40 text-zinc-600"
-        }`}
-        style={
-          isRun
-            ? { boxShadow: "0 0 20px rgba(34, 197, 94, 0.45)" }
-            : undefined
-        }
-      >
-        {done && !isRun && (
-          <CheckCircle2 size={12} className="text-[#22c55e]" />
-        )}
-        {isRun && (
-          <Loader2 size={12} className="animate-spin text-black" />
-        )}
-        {STAGE_LABELS[id]}
-      </span>
-    );
-  };
-
+  /* ── Stage body (trace panel) ────────────────────────────── */
   const renderPipelineStageBody = (id: StageId, stage: StageState) => {
     if (stage.status === "running") {
       return (
         <div
-          className="rounded-lg border border-violet-500/35 bg-violet-950/25 px-3 py-3"
+          className="rounded-lg px-3 py-3"
           style={{
-            boxShadow: "0 0 24px rgba(139, 92, 246, 0.12)",
+            background: `rgba(${G_RGB}, 0.06)`,
           }}
         >
-          <div className="mb-2 flex items-center gap-2 text-violet-200">
-            <Sparkles className="h-4 w-4 shrink-0 text-violet-400" />
-            <span className="text-[11px] font-bold uppercase tracking-wider">
+          <div className="mb-2 flex items-center gap-2">
+            <Brain className="h-4 w-4 shrink-0" style={{ color: G }} />
+            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: G }}>
               Model thinking
             </span>
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: G }} />
           </div>
-          <p className="thinking-stream text-sm leading-relaxed text-violet-100/90">
+          <p className="thinking-stream text-sm leading-relaxed text-neutral-300">
             {stage.thinking ?? stage.message}
           </p>
         </div>
@@ -386,36 +341,35 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
 
     if (stage.status === "error") {
       return (
-        <p className="text-sm text-red-300">{stage.message}</p>
+        <p className="text-sm text-red-400">{stage.message}</p>
       );
     }
 
     if (stage.status === "skipped") {
       return (
-        <p className="text-sm text-zinc-500 italic">{stage.message}</p>
+        <p className="text-sm italic text-neutral-600">{stage.message}</p>
       );
     }
 
     if (stage.status === "idle") {
       if (isAnalyzing) {
         return (
-          <p className="text-xs text-zinc-600">Waiting for pipeline…</p>
+          <p className="text-xs text-neutral-700">Waiting for pipeline…</p>
         );
       }
       if (hasStaleTrace && results == null) {
         return (
-          <p className="text-xs text-zinc-600 italic">Not reached.</p>
+          <p className="text-xs italic text-neutral-700">Not reached.</p>
         );
       }
       return null;
     }
 
-    /* complete — output only (thinking already cleared) */
     if (id === "input") {
       return (
         <div>
-          <p className="leading-relaxed text-zinc-300">{question}</p>
-          <p className="mt-2 text-xs text-zinc-500">{stage.message}</p>
+          <p className="leading-relaxed text-neutral-300">{question}</p>
+          <p className="mt-2 text-xs text-neutral-600">{stage.message}</p>
         </div>
       );
     }
@@ -425,8 +379,8 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
         (results?.prescan as string | undefined) ??
         (typeof stage.output === "string" ? stage.output : null);
       if (!text)
-        return <p className="text-xs text-zinc-500">No pre-scan text.</p>;
-      return <p className="leading-relaxed text-zinc-300">{text}</p>;
+        return <p className="text-xs text-neutral-600">No pre-scan text.</p>;
+      return <p className="leading-relaxed text-neutral-300">{text}</p>;
     }
 
     if (id === "routing") {
@@ -440,7 +394,7 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
       return (
         <div>
           {extra ? (
-            <pre className="max-h-32 overflow-auto rounded-lg bg-black/40 p-2 text-[10px] text-zinc-500">
+            <pre className="max-h-32 overflow-auto rounded-lg bg-black p-3 font-mono text-[11px] text-neutral-500">
               {JSON.stringify(
                 {
                   run_segmentation: extra.run_segmentation,
@@ -453,7 +407,7 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
               )}
             </pre>
           ) : (
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-neutral-400">
               {stage.message || "Routing complete."}
             </p>
           )}
@@ -478,26 +432,26 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
           | null;
       if (!summary && !raw && n == null) {
         return (
-          <p className="text-xs text-zinc-500">No PaliGemma output yet.</p>
+          <p className="text-xs text-neutral-600">No PaliGemma output yet.</p>
         );
       }
       return (
         <div>
           {summary && (
-            <p className="mb-2 leading-relaxed text-zinc-300">{summary}</p>
+            <p className="mb-2 leading-relaxed text-neutral-300">{summary}</p>
           )}
           {raw && (
             <details className="mt-1">
-              <summary className="cursor-pointer text-xs text-[#22c55e]">
+              <summary className="cursor-pointer text-xs font-medium" style={{ color: G }}>
                 Raw model output
               </summary>
-              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-black/50 p-3 text-[11px] text-zinc-500">
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-black p-3 text-[11px] text-neutral-500">
                 {raw}
               </pre>
             </details>
           )}
           {n != null && (
-            <p className="mt-2 text-xs text-zinc-600">
+            <p className="mt-2 text-xs text-neutral-600">
               Detections: {n} region(s)
             </p>
           )}
@@ -509,24 +463,24 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
       const d = results?.diagnosis ?? (stage.output as DiagnosisResult | null);
       if (!d || typeof d !== "object") {
         return (
-          <p className="text-xs text-zinc-500">No diagnosis payload.</p>
+          <p className="text-xs text-neutral-600">No diagnosis payload.</p>
         );
       }
       return (
         <div>
           {d.findings && d.findings.length > 0 ? (
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
                 Findings
               </p>
-              <ul className="list-inside list-disc space-y-1 text-zinc-300">
+              <ul className="list-inside list-disc space-y-1 text-neutral-300">
                 {d.findings.map((f) => (
                   <li key={f}>{f}</li>
                 ))}
               </ul>
             </div>
           ) : (
-            <p className="text-xs text-zinc-500">No findings reported.</p>
+            <p className="text-xs text-neutral-600">No findings reported.</p>
           )}
         </div>
       );
@@ -538,67 +492,68 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
         (typeof stage.output === "string" ? stage.output : null);
       if (!text) {
         return (
-          <p className="text-xs text-zinc-500">No summary generated.</p>
+          <p className="text-xs text-neutral-600">No summary generated.</p>
         );
       }
       return (
-        <p className="text-base leading-relaxed text-zinc-100">{text}</p>
+        <p className="text-base leading-relaxed text-neutral-100">{text}</p>
       );
     }
 
     return (
-      <p className="text-xs text-zinc-500">{stage.message}</p>
+      <p className="text-xs text-neutral-600">{stage.message}</p>
     );
   };
 
+  /* ── Render ──────────────────────────────────────────────── */
   return (
     <div
       className="min-h-screen text-white"
-      style={{ backgroundColor: "#0d0d0d", fontFamily: "Inter, system-ui, sans-serif" }}
+      style={{ backgroundColor: "#000", fontFamily: "Inter, system-ui, sans-serif" }}
     >
       <div className="flex min-h-screen flex-col md:flex-row">
         {/* ── Left sidebar ───────────────────────────────────── */}
         <aside
-          className="flex w-full shrink-0 flex-col border-b border-white/[0.06] px-5 py-6 md:w-[min(100%,380px)] md:border-b-0 md:border-r"
-          style={{ backgroundColor: "#121212" }}
+          className="flex w-full shrink-0 flex-col border-b px-5 py-6 md:w-[min(100%,380px)] md:border-b-0 md:border-r"
+          style={{ backgroundColor: "#050505", borderColor: `rgba(${G_RGB}, 0.1)` }}
         >
+          {/* Brand header */}
           <header className="mb-8 flex items-start gap-3">
             <div
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
               style={{
-                background: "rgba(34, 197, 94, 0.15)",
-                border: "1px solid rgba(34, 197, 94, 0.35)",
-                boxShadow: "0 0 20px rgba(34, 197, 94, 0.2)",
+                background: `rgba(${G_RGB}, 0.1)`,
+                border: `1px solid rgba(${G_RGB}, 0.3)`,
+                boxShadow: `0 0 24px rgba(${G_RGB}, 0.15)`,
               }}
             >
-              <Activity
-                className="text-[#22c55e]"
-                size={22}
-                strokeWidth={2.25}
-              />
+              <Activity style={{ color: G }} size={22} strokeWidth={2.25} />
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight text-white">
                 OpusAI
               </h1>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+              <p
+                className="text-[10px] font-semibold uppercase tracking-[0.2em]"
+                style={{ color: `rgba(${G_RGB}, 0.5)` }}
+              >
                 Agentic diagnostic AI
               </p>
             </div>
           </header>
 
-          {/* Retinal image */}
+          {/* Retinal image upload */}
           <section className="mb-6">
-            <div className="mb-2 flex items-center gap-2 text-zinc-400">
-              <ImageIcon size={15} strokeWidth={2} />
+            <div className="mb-2 flex items-center gap-2" style={{ color: `rgba(${G_RGB}, 0.7)` }}>
+              <ScanEye size={15} strokeWidth={2} />
               <span className="text-xs font-medium">Retinal Image</span>
             </div>
             <label className="block cursor-pointer">
               <div
-                className="relative overflow-hidden rounded-2xl border-2 border-dashed p-1"
-                style={{ borderColor: "rgba(34, 197, 94, 0.45)" }}
+                className="relative overflow-hidden rounded-2xl border-2 border-dashed p-1 transition-colors hover:border-opacity-80"
+                style={{ borderColor: `rgba(${G_RGB}, 0.35)` }}
               >
-                <div className="relative mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-full bg-black/50">
+                <div className="relative mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-full bg-black">
                   {previewUrl ? (
                     <img
                       src={previewUrl}
@@ -607,15 +562,20 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
                       onLoad={onPreviewLoad}
                     />
                   ) : (
-                    <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-xs text-zinc-600">
-                      <ImageIcon className="opacity-40" size={28} />
-                      Click to upload
+                    <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
+                      <div
+                        className="flex h-12 w-12 items-center justify-center rounded-full"
+                        style={{ background: `rgba(${G_RGB}, 0.08)`, border: `1px solid rgba(${G_RGB}, 0.2)` }}
+                      >
+                        <Upload size={20} style={{ color: G, opacity: 0.6 }} />
+                      </div>
+                      <span className="text-xs text-neutral-600">Click to upload</span>
                     </div>
                   )}
                   {imageDims && previewUrl && (
                     <span
                       className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-black"
-                      style={{ background: "#22c55e" }}
+                      style={{ background: G }}
                     >
                       {imageDims}
                     </span>
@@ -633,7 +593,7 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
 
           {/* Clinical inquiry */}
           <section className="mb-6">
-            <div className="mb-2 flex items-center gap-2 text-zinc-400">
+            <div className="mb-2 flex items-center gap-2" style={{ color: `rgba(${G_RGB}, 0.7)` }}>
               <MessageSquare size={15} strokeWidth={2} />
               <span className="text-xs font-medium">Clinical Inquiry</span>
             </div>
@@ -642,29 +602,38 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
               onChange={(e) => setQuestion(e.target.value)}
               rows={4}
               disabled={isAnalyzing}
-              className="w-full resize-none rounded-xl border border-white/[0.08] bg-black/40 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-[#22c55e]/40"
-              style={{ minHeight: "100px" }}
+              className="w-full resize-none rounded-xl border bg-black px-3 py-2.5 text-sm leading-relaxed text-neutral-200 outline-none transition-colors placeholder:text-neutral-700"
+              style={{
+                borderColor: `rgba(${G_RGB}, 0.12)`,
+                minHeight: "100px",
+              }}
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = `rgba(${G_RGB}, 0.4)`;
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = `rgba(${G_RGB}, 0.12)`;
+              }}
             />
           </section>
 
-          {/* Pipeline */}
+          {/* Pipeline sidebar */}
           <section className="mb-6 flex-1">
             <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-zinc-300">
-                <Zap className="text-[#22c55e]" size={16} />
-                <span className="text-sm font-semibold">Pipeline</span>
+              <div className="flex items-center gap-2">
+                <Zap size={16} style={{ color: G }} />
+                <span className="text-sm font-semibold text-neutral-200">Pipeline</span>
               </div>
-              <span className="text-xs font-mono text-zinc-500">
+              <span className="font-mono text-xs" style={{ color: `rgba(${G_RGB}, 0.5)` }}>
                 {completedCount}/{totalStages}
               </span>
             </div>
-            <div className="mb-4 h-1 overflow-hidden rounded-full bg-zinc-800">
+            <div className="mb-4 h-1 overflow-hidden rounded-full bg-neutral-900">
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${progressPct}%`,
-                  background: "linear-gradient(90deg, #16a34a, #22c55e)",
-                  boxShadow: "0 0 12px rgba(34, 197, 94, 0.5)",
+                  background: `linear-gradient(90deg, #22c55e, ${G})`,
+                  boxShadow: `0 0 12px rgba(${G_RGB}, 0.5)`,
                 }}
               />
             </div>
@@ -676,44 +645,43 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
                 return (
                   <li
                     key={id}
-                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all ${
-                      isActive
-                        ? "text-white"
-                        : done
-                          ? "text-[#22c55e]"
-                          : "text-zinc-600"
-                    }`}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all"
                     style={
                       isActive
                         ? {
-                            background: "rgba(34, 197, 94, 0.12)",
-                            boxShadow:
-                              "0 0 24px rgba(34, 197, 94, 0.15), inset 0 0 0 1px rgba(34, 197, 94, 0.25)",
+                            color: "#fff",
+                            background: `rgba(${G_RGB}, 0.08)`,
+                            boxShadow: `0 0 24px rgba(${G_RGB}, 0.1), inset 0 0 0 1px rgba(${G_RGB}, 0.2)`,
                           }
-                        : undefined
+                        : { color: done ? G : "rgb(115, 115, 115)" }
                     }
                   >
                     {done ? (
                       <CheckCircle2
-                        className="shrink-0 text-[#22c55e]"
+                        className="shrink-0"
                         size={18}
                         strokeWidth={2}
+                        style={{ color: G }}
                       />
                     ) : isActive ? (
                       <Loader2
-                        className="shrink-0 animate-spin text-[#22c55e]"
+                        className="shrink-0 animate-spin"
                         size={18}
+                        style={{ color: G }}
                       />
                     ) : (
-                      <span className="inline-block h-[18px] w-[18px] shrink-0 rounded-full border border-zinc-700" />
+                      <span
+                        className="inline-block h-[18px] w-[18px] shrink-0 rounded-full border"
+                        style={{ borderColor: "rgb(64, 64, 64)" }}
+                      />
                     )}
-                    <span
-                      className={`font-medium ${
-                        isActive ? "" : done ? "" : "text-zinc-600"
-                      }`}
-                    >
+                    <span className="flex items-center gap-1.5 font-medium">
+                      {STAGE_ICONS[id]}
                       {STAGE_LABELS[id]}
                     </span>
+                    {isActive && (
+                      <ChevronRight size={14} className="ml-auto opacity-60" style={{ color: G }} />
+                    )}
                   </li>
                 );
               })}
@@ -721,7 +689,7 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
           </section>
 
           {error && (
-            <div className="mb-3 rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-xs text-red-200">
+            <div className="mb-3 rounded-xl border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs text-red-300">
               {error}
             </div>
           )}
@@ -730,212 +698,219 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
             type="button"
             onClick={handleAnalyze}
             disabled={isAnalyzing || !selectedFile}
-            className="mb-3 w-full rounded-xl py-3 text-sm font-bold text-black transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ background: "#22c55e" }}
+            className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-black transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ background: G }}
           >
-            {isAnalyzing ? "Analyzing…" : "Run analysis"}
+            {isAnalyzing ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Analyzing…
+              </>
+            ) : (
+              <>
+                <Sparkles size={16} />
+                Run analysis
+              </>
+            )}
           </button>
 
           <button
             type="button"
             onClick={isAnalyzing ? handleCancel : onBackHome}
-            className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white transition hover:opacity-90"
-            style={{ background: "#7f1d1d" }}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border py-3 text-sm font-semibold text-neutral-300 transition hover:text-white"
+            style={{
+              background: "rgba(255, 255, 255, 0.03)",
+              borderColor: "rgba(255, 255, 255, 0.08)",
+            }}
           >
-            <X size={18} strokeWidth={2.5} />
+            <X size={16} strokeWidth={2.5} />
             {isAnalyzing ? "Cancel" : "Exit"}
           </button>
         </aside>
 
-        {/* ── Main: Active Context ───────────────────────────── */}
-        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* ── Main: pipeline only ───────────────────────────── */}
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-black">
           <div
-            className="pointer-events-none absolute inset-0 opacity-[0.35]"
+            className="pointer-events-none absolute inset-0 opacity-[0.45]"
             style={{
               backgroundImage: `
-                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)
+                linear-gradient(rgba(115, 115, 115, 0.12) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(115, 115, 115, 0.12) 1px, transparent 1px)
               `,
-              backgroundSize: "32px 32px",
+              backgroundSize: "24px 24px",
             }}
           />
-
-          <div className="relative z-[1] flex min-h-0 flex-1 flex-col px-8 py-6 md:px-12 md:py-8">
-            <div className="mb-10 flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <Microscope
-                  className="text-[#22c55e]"
-                  size={26}
-                  strokeWidth={2}
-                />
-                <h2 className="text-xl font-bold tracking-tight md:text-2xl">
-                  Active Context
-                </h2>
-              </div>
-              {showProcessingBadge ? (
-                <span
-                  className="inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-semibold"
-                  style={{
-                    borderColor: "rgba(96, 165, 250, 0.35)",
-                    background: "rgba(59, 130, 246, 0.12)",
-                    color: "#93c5fd",
-                  }}
-                >
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Processing
-                </span>
-              ) : results ? (
-                <span
-                  className="inline-flex items-center gap-2 rounded-full border border-[#22c55e]/40 bg-[#22c55e]/10 px-4 py-1.5 text-xs font-semibold text-[#86efac]"
-                >
-                  <CheckCircle2 size={14} />
-                  Complete
-                </span>
-              ) : null}
-            </div>
-
-            <div
-              className={`flex flex-col items-center justify-center pb-6 ${
-                showTrace ? "py-4" : "flex-1 pb-8"
-              }`}
-            >
-              <div
-                className={`relative flex items-center justify-center ${
-                  showTrace
-                    ? "mb-4 h-28 w-28 md:h-32 md:w-32"
-                    : "mb-8 h-48 w-48 md:h-56 md:w-56"
-                }`}
-              >
-                <div
-                  className="absolute inset-0 rounded-full"
-                  style={{
-                    border: "3px solid rgba(34, 197, 94, 0.25)",
-                    boxShadow:
-                      "0 0 60px rgba(34, 197, 94, 0.25), inset 0 0 40px rgba(34, 197, 94, 0.06)",
-                  }}
-                />
-                <div
-                  className="absolute inset-2 rounded-full"
-                  style={{
-                    border: "2px solid rgba(34, 197, 94, 0.5)",
-                    animation: "dashboard-pulse 2.2s ease-in-out infinite",
-                  }}
-                />
-                <div
-                  className={`relative flex items-center justify-center rounded-full ${
-                    showTrace
-                      ? "h-16 w-16 md:h-20 md:w-20"
-                      : "h-28 w-28 md:h-32 md:w-32"
-                  }`}
-                  style={{
-                    background:
-                      "radial-gradient(circle at 30% 30%, rgba(34,197,94,0.25), rgba(0,0,0,0.9))",
-                    border: "1px solid rgba(34, 197, 94, 0.35)",
-                    boxShadow: "0 0 32px rgba(34, 197, 94, 0.35)",
-                  }}
-                >
-                  <Microscope
-                    className="text-[#22c55e]"
-                    size={showTrace ? 28 : 44}
-                    strokeWidth={1.75}
-                  />
+          <div className="relative z-[1] flex min-h-0 flex-1 flex-col px-6 py-5 md:px-10 md:py-6">
+            <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-black/40 backdrop-blur-[2px]">
+              <div className="flex shrink-0 items-center justify-between gap-3 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <Zap size={18} style={{ color: G }} />
+                  <h2 className="text-sm font-bold uppercase tracking-widest md:text-base" style={{ color: G }}>
+                    Pipeline
+                  </h2>
                 </div>
-              </div>
-
-              <h3
-                className={`mb-2 text-center font-bold tracking-tight text-white ${
-                  showTrace ? "text-lg md:text-xl" : "text-2xl md:text-3xl"
-                }`}
-              >
-                {activeLabel}
-              </h3>
-              <p className="max-w-md text-center text-sm text-zinc-500 md:text-base">
-                {activeSubtext}
-              </p>
-            </div>
-
-            {/* Horizontal pipeline pills (summary centered on second row, like reference) */}
-            <div className="relative z-[1] flex flex-col items-center gap-3 pb-6">
-              <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
-                {STAGE_ORDER.filter((id) => id !== "synthesis").map((id) =>
-                  renderStagePill(id),
+                {isAnalyzing ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold"
+                    style={{
+                      background: `rgba(${G_RGB}, 0.12)`,
+                      color: G,
+                    }}
+                  >
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Running
+                  </span>
+                ) : results ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold"
+                    style={{
+                      background: `rgba(${G_RGB}, 0.14)`,
+                      color: G,
+                    }}
+                  >
+                    <CheckCircle2 size={12} />
+                    Done
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-medium text-neutral-600">
+                    {completedCount}/{totalStages} steps
+                  </span>
                 )}
               </div>
-              <div className="flex justify-center">
-                {renderStagePill("synthesis")}
-              </div>
-            </div>
 
-            {showTrace && (
-              <div className="custom-scrollbar relative z-[1] mx-auto mt-2 flex min-h-[220px] w-full max-w-3xl flex-1 flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-black/40 backdrop-blur-sm md:max-w-4xl md:min-h-[300px]">
-                <div className="overflow-y-auto p-5 text-sm">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-[#22c55e]">
-                    {isAnalyzing ? "Live model trace" : "Pipeline results"}
-                  </p>
-                  <p className="mb-4 text-[11px] text-zinc-500">
-                    While a step runs you&apos;ll see{" "}
-                    <span className="text-violet-400">model thinking</span>; when
-                    it finishes, that hides and the step&apos;s output stays below.
-                  </p>
+              <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-5 text-sm">
+                {STAGE_ORDER.map((id, idx) => {
+                  const stage = stages[id] ?? {
+                    status: "idle" as StageStatus,
+                    message: "",
+                    thinking: null,
+                    output: null,
+                  };
+                  const highlightSynth =
+                    id === "synthesis" &&
+                    stage.status === "complete" &&
+                    Boolean(results);
 
-                  {STAGE_ORDER.map((id) => {
-                    const stage = stages[id] ?? {
-                      status: "idle" as StageStatus,
-                      message: "",
-                      thinking: null,
-                      output: null,
-                    };
-                    const stepNum = STAGE_ORDER.indexOf(id) + 1;
-                    const highlightSynth =
-                      id === "synthesis" &&
-                      stage.status === "complete" &&
-                      Boolean(results);
-                    const hideIdlePending =
-                      stage.status === "idle" &&
-                      !isAnalyzing &&
-                      results == null &&
-                      !hasStaleTrace;
+                  const done = isDone(stage.status);
+                  const isRunning = stage.status === "running";
+                  const isLast = idx === STAGE_ORDER.length - 1;
 
-                    if (hideIdlePending) return null;
+                  return (
+                    <div
+                      key={id}
+                      className="stage-reveal flex gap-4"
+                      style={{ animationDelay: `${idx * 120}ms` }}
+                    >
+                      <div className="flex flex-col items-center pt-1">
+                        <div
+                          className="relative flex h-3 w-3 shrink-0 items-center justify-center rounded-full transition-all duration-300"
+                          style={
+                            done
+                              ? {
+                                  background: G,
+                                  boxShadow: `0 0 8px rgba(${G_RGB}, 0.5)`,
+                                }
+                              : isRunning
+                                ? {
+                                    background: "transparent",
+                                    border: `2px solid ${G}`,
+                                    boxShadow: `0 0 10px rgba(${G_RGB}, 0.4)`,
+                                  }
+                                : {
+                                    background: "transparent",
+                                    border: "2px solid rgb(64, 64, 64)",
+                                  }
+                          }
+                        >
+                          {isRunning && (
+                            <span
+                              className="absolute inset-[-4px] rounded-full"
+                              style={{
+                                border: `1.5px solid rgba(${G_RGB}, 0.3)`,
+                                animation: "dot-ping 1.5s ease-in-out infinite",
+                              }}
+                            />
+                          )}
+                        </div>
+                        {!isLast && (
+                          <div
+                            className="mt-1 w-px flex-1 transition-colors duration-500"
+                            style={{
+                              background: done
+                                ? `rgba(${G_RGB}, 0.3)`
+                                : "rgba(255, 255, 255, 0.06)",
+                              minHeight: "24px",
+                            }}
+                          />
+                        )}
+                      </div>
 
-                    return (
-                      <section
-                        key={id}
-                        className={`mb-4 rounded-xl border p-4 last:mb-0 ${
+                      <div
+                        className="mb-4 min-w-0 flex-1 rounded-xl p-4"
+                        style={
                           highlightSynth
-                            ? "border-[#22c55e]/30 bg-[#22c55e]/[0.07]"
-                            : "border-white/[0.08] bg-black/30"
-                        }`}
+                            ? { background: `rgba(${G_RGB}, 0.06)` }
+                            : { background: "rgba(0, 0, 0, 0.25)" }
+                        }
                       >
                         <h4
-                          className={`mb-3 text-[11px] font-bold uppercase tracking-wider ${
-                            highlightSynth ? "text-[#86efac]" : "text-zinc-500"
-                          }`}
+                          className="mb-3 text-[11px] font-bold uppercase tracking-wider"
+                          style={{
+                            color: highlightSynth ? G : done ? G : "rgb(115, 115, 115)",
+                          }}
                         >
-                          {stepNum} · {STAGE_LABELS[id]}
+                          {STAGE_LABELS[id]}
                         </h4>
                         {renderPipelineStageBody(id, stage)}
-                      </section>
-                    );
-                  })}
-                </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            )}
+            </div>
           </div>
         </main>
       </div>
 
       <style>{`
-        @keyframes dashboard-pulse {
-          0%, 100% { opacity: 0.5; transform: scale(1); }
-          50% { opacity: 1; transform: scale(1.02); }
-        }
         @keyframes thinking-shimmer {
           0%, 100% { opacity: 0.85; }
           50% { opacity: 1; }
         }
         .thinking-stream {
           animation: thinking-shimmer 2s ease-in-out infinite;
+        }
+        @keyframes stage-fade-in {
+          from {
+            opacity: 0;
+            transform: translateY(12px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .stage-reveal {
+          animation: stage-fade-in 0.4s ease-out both;
+        }
+        @keyframes dot-ping {
+          0%, 100% {
+            transform: scale(1);
+            opacity: 0.6;
+          }
+          50% {
+            transform: scale(1.6);
+            opacity: 0;
+          }
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb {
+          background: rgba(${G_RGB}, 0.15);
+          border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: rgba(${G_RGB}, 0.3);
         }
       `}</style>
     </div>
