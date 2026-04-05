@@ -10,6 +10,10 @@ export default function AuthCallback() {
 
 useEffect(() => {
   const handleCallback = async () => {
+    if (!supabase) {
+      navigate("/");
+      return;
+    }
 
     // Small delay to let Supabase process the URL hash
     await new Promise((resolve) => setTimeout(resolve, 500));

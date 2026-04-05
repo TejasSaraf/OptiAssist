@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "./supabaseClient";
+import { useNavigate } from "react-router-dom";
 import logo from "./logo.png";
 import {
     Zap,
@@ -7,11 +7,8 @@ import {
     Stethoscope,
     ArrowRight,
     Eye,
-    Brain,
     Activity,
-    ChevronRight,
     Cpu,
-    Shield,
     Layers,
     LogIn,
     CheckCircle,
@@ -24,14 +21,14 @@ import {
 //  Three.js Background — fast moving points only
 // ─────────────────────────────────────────────
 function ThreeBackground() {
-    const mountRef = useRef(null);
+    const mountRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
-        let animId;
-        let THREE;
+        let animId: number | undefined;
 
         const init = async () => {
-            THREE = await import("https://esm.sh/three@0.160.0");
+            // @ts-expect-error Runtime CDN import is resolved by the browser.
+            const THREE = await import("https://esm.sh/three@0.160.0");
 
             const mount = mountRef.current;
             if (!mount) return;
@@ -50,7 +47,7 @@ function ThreeBackground() {
             mount.appendChild(renderer.domElement);
 
             const COUNT = 350;
-            const pointData = [];
+            const pointData: Array<{ vx: number; vy: number; vz: number }> = [];
             const positions = new Float32Array(COUNT * 3);
             const colors = new Float32Array(COUNT * 3);
 
@@ -127,7 +124,9 @@ function ThreeBackground() {
 
             return () => {
                 window.removeEventListener("resize", onResize);
-                cancelAnimationFrame(animId);
+                if (animId !== undefined) {
+                    cancelAnimationFrame(animId);
+                }
                 renderer.dispose();
                 if (mount.contains(renderer.domElement)) {
                     mount.removeChild(renderer.domElement);
@@ -135,9 +134,13 @@ function ThreeBackground() {
             };
         };
 
-        let cleanup;
-        init().then((fn) => { cleanup = fn; });
-        return () => { cleanup && cleanup(); };
+        let cleanup: (() => void) | undefined;
+        void init().then((fn) => {
+            cleanup = fn;
+        });
+        return () => {
+            cleanup?.();
+        };
     }, []);
 
     return (
@@ -197,9 +200,10 @@ const typewriterPoints = [
 // ─────────────────────────────────────────────
 export default function LandingPage() {
     const [scrolled, setScrolled] = useState(false);
-    const [activeFeature, setActiveFeature] = useState(null);
+    const [activeFeature, setActiveFeature] = useState<number | null>(null);
     const [displayedText, setDisplayedText] = useState(["", "", ""]);
     const [currentPoint, setCurrentPoint] = useState(0);
+    const navigate = useNavigate();
 
     useEffect(() => {
         const onScroll = () => setScrolled(window.scrollY > 20);
@@ -225,18 +229,8 @@ export default function LandingPage() {
         return () => clearInterval(interval);
     }, [currentPoint]);
 
-    const handleLogin = async () => {
-        await supabase.auth.signOut({ scope: "global" });
-        Object.keys(localStorage).forEach((key) => {
-            if (key.startsWith("sb-")) localStorage.removeItem(key);
-        });
-        await supabase.auth.signInWithOAuth({
-            provider: "google",
-            options: {
-                redirectTo: "http://localhost:5173/auth/callback",
-                queryParams: { prompt: "select_account" },
-            },
-        });
+    const handleGetStarted = () => {
+        navigate("/app");
     };
 
     // shared inline style helpers
@@ -299,12 +293,12 @@ export default function LandingPage() {
 
                         
 
-                        <button onClick={handleLogin}
+                        <button onClick={handleGetStarted}
                             style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 20px", borderRadius: 8, border: "1px solid rgba(34,197,94,0.5)", background: "transparent", color: "#4ade80", fontSize: 14, fontWeight: 500, cursor: "pointer", transition: "all 0.2s" }}
                             onMouseEnter={(e) => { e.currentTarget.style.background = "#22c55e"; e.currentTarget.style.color = "#000"; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#4ade80"; }}
                         >
-                            <LogIn size={15} /> Login
+                            <LogIn size={15} /> Get Started
                         </button>
                     </div>
                 </nav>
@@ -321,7 +315,6 @@ export default function LandingPage() {
                                 AI-Powered Ophthalmology Optimization
                             </span>
                         </div>
-
 
                         <h1
                             style={{
@@ -538,7 +531,7 @@ export default function LandingPage() {
                                 ))}
                             </div>
 
-                            {/* Google sign-in card */}
+                            {/* Quick-start card */}
                             <div style={{ maxWidth: 340, margin: "0 auto 28px", borderRadius: 16, border: "1px solid rgba(34,197,94,0.2)", background: "rgba(255,255,255,0.03)", backdropFilter: "blur(8px)", padding: 20 }}>
                                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                                     {infoPoints.map((point, i) => (
@@ -551,29 +544,24 @@ export default function LandingPage() {
                                     ))}
                                 </div>
                                 <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                                    <button onClick={handleLogin}
+                                    <button onClick={handleGetStarted}
                                         style={{ width: "100%", padding: "11px 0", borderRadius: 10, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", color: "#4ade80", fontSize: 14, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, transition: "all 0.2s" }}
                                         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(34,197,94,0.2)"; }}
                                         onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(34,197,94,0.1)"; }}
                                     >
-                                        <svg width="16" height="16" viewBox="0 0 24 24">
-                                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                                        </svg>
-                                        Continue with Google
+                                        <ArrowRight size={16} />
+                                        Open Dashboard
                                     </button>
                                 </div>
                             </div>
 
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 14, justifyContent: "center" }}>
-                                <button onClick={handleLogin}
+                                <button onClick={handleGetStarted}
                                     style={{ ...btn.primary, padding: "13px 30px", fontSize: 15 }}
                                     onMouseEnter={(e) => { e.currentTarget.style.background = "#16a34a"; e.currentTarget.style.transform = "scale(1.03)"; }}
                                     onMouseLeave={(e) => { e.currentTarget.style.background = "#22c55e"; e.currentTarget.style.transform = "none"; }}
                                 >
-                                    Create Free Account <ArrowRight size={16} />
+                                    Get Started <ArrowRight size={16} />
                                 </button>
                                 <button
                                     style={{ ...btn.ghost, padding: "13px 30px", fontSize: 15 }}
@@ -606,8 +594,8 @@ export default function LandingPage() {
                             {["Privacy", "Terms", "Contact"].map((l) => (
                                 <a key={l} href="#"
                                     style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", textDecoration: "none", transition: "color 0.2s" }}
-                                    onMouseEnter={(e) => (e.target.style.color = "#4ade80")}
-                                    onMouseLeave={(e) => (e.target.style.color = "rgba(255,255,255,0.25)")}
+                                    onMouseEnter={(e) => (e.currentTarget.style.color = "#4ade80")}
+                                    onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.25)")}
                                 >{l}</a>
                             ))}
                         </div>

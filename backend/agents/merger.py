@@ -60,6 +60,18 @@ def _build_context(
     """
     parts: list[str] = []
 
+    # PaliGemma first, then MedGemma — matches clinical flow for Gemma 3 summary.
+    if location is not None:
+        summary = location.get("summary", "")
+        detections = location.get("detections", [])
+        raw_snip = (location.get("raw_output") or "")[:800]
+        seg_line = (
+            f"PaliGemma (image): {summary} ({len(detections)} region(s) detected)"
+        )
+        if raw_snip.strip():
+            seg_line += f"\nPaliGemma raw excerpt: {raw_snip.strip()}"
+        parts.append(seg_line)
+
     if diagnosis is not None:
         condition = diagnosis.get("condition", "Unknown")
         severity = diagnosis.get("severity", "Unknown")
@@ -70,15 +82,8 @@ def _build_context(
         conf_text = f" (confidence: {confidence:.0%})" if isinstance(
             confidence, float) else ""
         parts.append(
-            f"Diagnosis: {condition}, severity {severity}{conf_text}. "
+            f"MedGemma diagnosis: {condition}, severity {severity}{conf_text}. "
             f"Findings: {findings_text}. Recommendation: {recommendation}"
-        )
-
-    if location is not None:
-        summary = location.get("summary", "")
-        detections = location.get("detections", [])
-        parts.append(
-            f"Segmentation: {summary} ({len(detections)} region(s) detected)"
         )
 
     if cdr_metrics:

@@ -8,7 +8,7 @@ import uvicorn
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from agents.diagnosis import run_diagnosis, _load_medgemma
+from agents.diagnosis import run_diagnosis, _load_medgemma, _medgemma_4bit
 
 
 @asynccontextmanager
@@ -18,15 +18,9 @@ async def lifespan(app: FastAPI):
     os.environ["_MEDGEMMA_SERVER_PROCESS"] = "1"
     print("Loading MedGemma 4B into active memory... (This may take a few minutes)")
     _load_medgemma()
-    from agents.diagnosis import _medgemma_4bit as q4, _medgemma_finetuned as ft
-    labels = []
-    if q4:
-        labels.append("4-bit NF4 quantized")
-    else:
-        labels.append("full precision")
-    if ft:
-        labels.append("fine-tuned LoRA adapter")
-    print(f"MedGemma successfully loaded ({', '.join(labels)}).")
+    from agents.diagnosis import _medgemma_4bit as q4
+    q_label = "4-bit NF4 quantized" if q4 else "full precision"
+    print(f"MedGemma successfully loaded and bound to VRAM ({q_label}).")
     yield
 
 
@@ -38,17 +32,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.get("/health")
-async def health():
-    from agents.diagnosis import _medgemma_4bit as q4, _medgemma_finetuned as ft
-    return {
-        "status": "ok",
-        "model": "google/medgemma-4b-it",
-        "quantized_4bit": q4,
-        "finetuned": ft,
-    }
 
 
 @app.post("/v1/diagnose")
@@ -68,12 +51,11 @@ async def diagnose(
             paligemma_context=paligemma_context,
         )
 
-        from agents.diagnosis import _medgemma_4bit as q4, _medgemma_finetuned as ft
+        from agents.diagnosis import _medgemma_4bit as q4
         return {
             "status": "success",
             "model": "google/medgemma-4b-it",
             "quantized_4bit": q4,
-            "finetuned": ft,
             "request_prompt": prompt,
             "diagnosis": diagnosis_result,
         }
@@ -84,8 +66,4 @@ async def diagnose(
 
 if __name__ == "__main__":
     print("Starting MedGemma dedicated API server on Port 8081...")
-    print("  Adapter: checkpoints/medgemma/final/ (auto-detected if present)")
-    print("  Override: OPTIASSIST_MEDGEMMA_ADAPTER=/path/to/adapter")
-    print("  Quantization: OPTIASSIST_MEDGEMMA_4BIT=1 (default, requires CUDA)")
-    print()
     uvicorn.run("serve_medgemma:app", host="0.0.0.0", port=8081, reload=False)

@@ -3,10 +3,14 @@ OptiAssist Backend — 6-Stage Linear Pipeline
 
     1. input        → Image + prompt accepted
     2. gemma3       → Gemma 3 pre-scans the retinal image  (Ollama)
-    3. routing      → FunctionGemma decides the analysis route  (Ollama)
-    4. paligemma    → Fine-tuned PaliGemma analyses the image
-    5. medgemma     → MedGemma 4B produces structured diagnosis
-    6. synthesis    → Gemma 3 merges everything into a clinical narrative  (Ollama)
+    3. routing      → FunctionGemma proposes a route  (Ollama); advisory only
+    4. paligemma    → PaliGemma describes / localizes structures in the image
+    5. medgemma     → MedGemma diagnosis (prompt includes PaliGemma output)
+    6. synthesis    → Gemma 3 narrative summary over all outputs  (Ollama)
+
+Steps 4–5 run for ``/api/analyze`` by default (``OPTIASSIST_FULL_PIPELINE=1``)
+so MedGemma always receives PaliGemma output. Set ``OPTIASSIST_FULL_PIPELINE=0``
+to follow FunctionGemma’s tool list only.
 
 Inference delegation (set in backend/.env):
 
@@ -114,6 +118,29 @@ def _parse_route_flags(route: str) -> tuple[bool, bool]:
         return True, True
     return want_seg, want_diag
 
+
+def _build_paligemma_context_for_medgemma(location: dict | None) -> str:
+    """
+    Text passed into MedGemma so it can reason on PaliGemma output — not only
+    JSON detections (which may be empty) but also summary and raw model text.
+    """
+    if not location:
+        return ""
+    chunks: list[str] = []
+    summary = (location.get("summary") or "").strip()
+    raw = (location.get("raw_output") or "").strip()
+    if summary:
+        chunks.append(f"PaliGemma structured summary:\n{summary}")
+    if raw:
+        chunks.append(f"PaliGemma model output:\n{raw[:4000]}")
+    dets = location.get("detections") or []
+    if dets:
+        chunks.append(
+            "PaliGemma detections (labels / locations):\n"
+            + json.dumps(dets, indent=2)
+        )
+    return "\n\n".join(chunks)
+
 # ── Main pipeline endpoint ───────────────────────────────────────────
 
 @app.post("/api/analyze")
@@ -167,7 +194,26 @@ async def analyze(
                 })
                 route = await _route_with_functiongemma(question, description)
                 results["routing"] = route
-                run_seg, run_diag = _parse_route_flags(route)
+                advisory_seg, advisory_diag = _parse_route_flags(route)
+                force_full = os.environ.get(
+                    "OPTIASSIST_FULL_PIPELINE", "1",
+                ).strip().lower() in ("1", "true", "yes", "on")
+                if force_full:
+                    run_seg, run_diag = True, True
+                    logger.info(
+                        "Pipeline: FunctionGemma advisory seg=%s diag=%s — "
+                        "OPTIASSIST_FULL_PIPELINE=1, running full PaliGemma + MedGemma",
+                        advisory_seg,
+                        advisory_diag,
+                    )
+                else:
+                    run_seg, run_diag = advisory_seg, advisory_diag
+                    logger.info(
+                        "Pipeline: respecting router seg=%s diag=%s "
+                        "(set OPTIASSIST_FULL_PIPELINE=1 for always-on)",
+                        run_seg,
+                        run_diag,
+                    )
                 await emit("stage", {
                     "id": "routing", "status": "complete",
                     "message": f"Route: {route[:100]}",
@@ -175,6 +221,8 @@ async def analyze(
                         "raw": route,
                         "run_segmentation": run_seg,
                         "run_diagnosis": run_diag,
+                        "advisory_segmentation": advisory_seg,
+                        "advisory_diagnosis": advisory_diag,
                     },
                 })
 
@@ -189,9 +237,8 @@ async def analyze(
                     try:
                         location = await run_segmentation(image_bytes, question)
                         results["segmentation"] = location
-                        if location and location.get("detections"):
-                            paligemma_ctx = json.dumps(
-                                location["detections"], indent=2)
+                        paligemma_ctx = _build_paligemma_context_for_medgemma(
+                            location)
                         await emit("stage", {
                             "id": "paligemma", "status": "complete",
                             "message": "PaliGemma analysis complete",

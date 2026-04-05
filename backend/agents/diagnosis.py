@@ -83,11 +83,7 @@ FALLBACK_RESULT = {
 }
 
 _medgemma_pipe = None
-_medgemma_4bit = False      # tracks whether we loaded with quantization
-_medgemma_finetuned = False  # tracks whether a LoRA adapter was applied
-
-# Default adapter path — override with OPTIASSIST_MEDGEMMA_ADAPTER env var
-_DEFAULT_ADAPTER_PATH = Path(__file__).resolve().parent.parent.parent / "checkpoints" / "medgemma" / "final"
+_medgemma_4bit = False  # tracks whether we loaded with quantization
 
 
 def _load_medgemma():
@@ -101,7 +97,7 @@ def _load_medgemma():
     On MPS (Apple Silicon) or CPU — where ``bitsandbytes`` 4-bit is not
     supported — the function silently falls back to full-precision loading.
     """
-    global _medgemma_pipe, _medgemma_4bit, _medgemma_finetuned
+    global _medgemma_pipe, _medgemma_4bit
 
     if _medgemma_pipe is not None:
         return
@@ -110,7 +106,7 @@ def _load_medgemma():
 
     import torch
     from dotenv import load_dotenv
-    from transformers import Gemma3ForConditionalGeneration, AutoProcessor, pipeline
+    from transformers import AutoModelForImageTextToText, AutoProcessor, pipeline
 
     _env_path = _Path(__file__).parent.parent / ".env"
     load_dotenv(_env_path)
@@ -146,7 +142,7 @@ def _load_medgemma():
         processor = AutoProcessor.from_pretrained(
             _HF_MODEL_ID, token=hf_token, use_fast=True,
         )
-        model = Gemma3ForConditionalGeneration.from_pretrained(
+        model = AutoModelForImageTextToText.from_pretrained(
             _HF_MODEL_ID,
             token=hf_token,
             quantization_config=bnb_config,
@@ -154,35 +150,21 @@ def _load_medgemma():
             torch_dtype=torch.bfloat16,
         )
 
-        # ── Check for fine-tuned LoRA adapter ────────────────────────
-        adapter_path = os.environ.get(
-            "OPTIASSIST_MEDGEMMA_ADAPTER", str(_DEFAULT_ADAPTER_PATH))
-        if Path(adapter_path).exists() and (Path(adapter_path) / "adapter_model.safetensors").exists():
-            from peft import PeftModel
-            logger.info("Loading fine-tuned LoRA adapter from %s", adapter_path)
-            model = PeftModel.from_pretrained(model, adapter_path)
-            _medgemma_finetuned = True
-            logger.info("LoRA adapter loaded successfully.")
-        else:
-            logger.info("No LoRA adapter found at %s — using base model.", adapter_path)
-
         _medgemma_pipe = pipeline(
             "image-text-to-text",
             model=model,
-            processor=processor,
+            tokenizer=processor.tokenizer,
+            image_processor=processor.image_processor,
         )
         _medgemma_4bit = True
-        logger.info("MedGemma pipeline loaded successfully (4-bit quantized%s).",
-                     " + fine-tuned" if _medgemma_finetuned else "")
+        logger.info("MedGemma pipeline loaded successfully (4-bit quantized).")
 
     else:
         # ── Full-precision loading (MPS / CPU / 4-bit disabled) ──────
-        mps_available = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
-
         if torch.cuda.is_available():
             dtype = torch.bfloat16
             device_map = "auto"
-        elif mps_available:
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             dtype = torch.float16
             device_map = "auto"
         else:
@@ -196,69 +178,17 @@ def _load_medgemma():
         processor = AutoProcessor.from_pretrained(
             _HF_MODEL_ID, token=hf_token, use_fast=True,
         )
-
-        model_or_id: any = _HF_MODEL_ID
-        extra_kwargs: dict = {
-            "token": hf_token,
-            "torch_dtype": dtype,
-            "device_map": device_map,
-        }
-
-        # ── Check for fine-tuned LoRA adapter ────────────────────────
-        adapter_path = os.environ.get(
-            "OPTIASSIST_MEDGEMMA_ADAPTER", str(_DEFAULT_ADAPTER_PATH))
-        if Path(adapter_path).exists() and (Path(adapter_path) / "adapter_model.safetensors").exists():
-            from peft import PeftModel
-            logger.info("Loading base model for adapter attachment...")
-
-            base_model_kwargs: dict = {
-                "token": hf_token,
-                "torch_dtype": dtype,
-            }
-            post_load_device: str | None = None
-
-            if torch.cuda.is_available():
-                base_model_kwargs["device_map"] = device_map
-            else:
-                # PEFT currently crashes when Gemma 3 is loaded through
-                # device_map="auto" and some layers are disk-offloaded/meta.
-                base_model_kwargs["device_map"] = "cpu"
-                if device_map == "auto":
-                    logger.info(
-                        "Loading MedGemma on CPU first to avoid the Gemma 3 "
-                        "PEFT offload bug triggered by device_map='auto'."
-                    )
-                if mps_available:
-                    post_load_device = "mps"
-
-            base_model = Gemma3ForConditionalGeneration.from_pretrained(
-                _HF_MODEL_ID,
-                **base_model_kwargs,
-            )
-            logger.info("Loading fine-tuned LoRA adapter from %s", adapter_path)
-            model_or_id = PeftModel.from_pretrained(
-                base_model,
-                adapter_path,
-                low_cpu_mem_usage=False,
-            )
-            if post_load_device is not None:
-                logger.info("Moving MedGemma + LoRA adapter to %s for inference.", post_load_device.upper())
-                model_or_id = model_or_id.to(post_load_device)
-            _medgemma_finetuned = True
-            extra_kwargs = {}  # model already loaded, no extra kwargs needed
-            logger.info("LoRA adapter loaded successfully.")
-        else:
-            logger.info("No LoRA adapter found at %s — using base model.", adapter_path)
-
         _medgemma_pipe = pipeline(
             "image-text-to-text",
-            model=model_or_id,
-            processor=processor,
-            **extra_kwargs,
+            model=_HF_MODEL_ID,
+            token=hf_token,
+            torch_dtype=dtype,
+            device_map=device_map,
+            image_processor=processor.image_processor,
+            tokenizer=processor.tokenizer,
         )
         _medgemma_4bit = False
-        logger.info("MedGemma pipeline loaded successfully (full precision%s).",
-                     " + fine-tuned" if _medgemma_finetuned else "")
+        logger.info("MedGemma pipeline loaded successfully (full precision).")
 
 
 def _run_inference(messages: list[dict]) -> str:
