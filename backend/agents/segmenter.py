@@ -3,42 +3,21 @@ from __future__ import annotations
 """
 segmenter.py
 
-PaliGemma agent
+PaliGemma agent — retinal image analysis via fine-tuned PaliGemma.
 
-This agent uses the fine-tuned PaliGemma model (google/paligemma-3b-pt-224,
-LoRA-adapted, merged) for retinal image analysis.  Given a fundus image
-it generates a clinical analysis that can include detection of structures
-(optic disc, optic cup) or general DR findings.
-
-The model was fine-tuned on Diabetic Retinopathy VQA — 6 question types:
-  1. Classification (grade identification)
-  2. Lesion identification
-  3. Clinical reasoning
-  4. Clinical action
-  5. Confidence assessment
-  6. Differential diagnosis
-
-Model details
--------------
-  Base model:  google/paligemma-3b-pt-224
-  Fine-tuning: QLoRA (r=8, alpha=16) on DR VQA dataset
-  Merged:      backend/models/paligemma-finetuned/
-
-Agent role in the pipeline
----------------------------
-  1. Gemma 3 prescans the image → prescan.py
-  2. FunctionGemma routes to the appropriate agent(s) → router.py
-  3. ★ THIS AGENT: PaliGemma analyzes the fundus image.
-  4. MedGemma runs general medical diagnosis → diagnosis.py
-  5. Results merged into final output → merger.py
+When OPTIASSIST_PALIGEMMA_URL is set (e.g. http://localhost:8080), inference
+is delegated to the dedicated serve_paligemma.py server via HTTP. Otherwise
+the merged model is loaded in-process from backend/models/paligemma-finetuned/.
 """
 
 import asyncio
 import io
 import logging
+import os
 import sys
 from pathlib import Path
 
+import httpx
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -49,30 +28,77 @@ _MODEL_DIR = (
     / "paligemma-finetuned"
 )
 
-
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+_DEFAULT_PROMPT = (
+    "Analyze this retinal fundus image. What condition is present, "
+    "what is the severity, and what findings do you see?"
+)
 
-_DEFAULT_PROMPT = "Analyze this retinal fundus image. What condition is present, what is the severity, and what findings do you see?"
 
+# ── Helpers for building result dicts from HTTP responses ─────────────
+
+def _structure_http_response(
+    image_bytes: bytes,
+    raw_output: str,
+    clean_response: str,
+) -> dict:
+    """Build the same result shape as paligemma_tool.run_paligemma_detection."""
+    from app.tools.paligemma_tool import _draw_detections, _parse_loc_tokens
+
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    w, h = image.size
+    detections = _parse_loc_tokens(raw_output, w, h)
+
+    annotated_b64 = ""
+    if detections:
+        try:
+            annotated_b64 = _draw_detections(image, detections)
+        except Exception as e:
+            logger.warning("Failed to draw detections: %s", e)
+
+    if detections:
+        labels = [d["label"] for d in detections]
+        summary = f"Detected {len(detections)} region(s): {', '.join(labels)}"
+    else:
+        summary = (clean_response or "")[:300] or "No output generated."
+
+    return {
+        "raw_output": clean_response,
+        "detections": detections,
+        "annotated_image_base64": annotated_b64,
+        "summary": summary,
+    }
+
+
+async def _run_segmentation_remote(
+    base_url: str, image_bytes: bytes, query: str
+) -> dict:
+    """POST to serve_paligemma /v1/generate and structure the result."""
+    url = f"{base_url}/v1/generate"
+    files = {"image": ("fundus.jpg", image_bytes, "image/jpeg")}
+    data = {"prompt": query, "max_tokens": "256"}
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        resp = await client.post(url, files=files, data=data)
+        resp.raise_for_status()
+        body = resp.json()
+    if body.get("status") != "success":
+        raise RuntimeError(body.get("message", "PaliGemma API error"))
+    raw_for_parse = body.get("raw_output") or body.get("response") or ""
+    clean = (body.get("response") or "").strip()
+    return _structure_http_response(image_bytes, raw_for_parse, clean)
+
+
+# ── In-process inference (when no remote URL configured) ──────────────
 
 def _run_inference_sync(image_bytes: bytes, query: str = _DEFAULT_PROMPT) -> dict:
     """
     Blocking wrapper — loads the model once (cached inside paligemma_tool)
     then runs retinal image analysis.
-
-    Called via ``asyncio.to_thread`` so the event loop stays free.
-
-    Args:
-        image_bytes: Raw bytes of the input fundus image.
-        query:       The analysis prompt to send with the image.
-
-    Returns:
-        Raw result dict from run_paligemma_detection.
     """
-    import os
+    import os as _os
     import tempfile
 
     from app.tools.paligemma_tool import run_paligemma_detection
@@ -88,56 +114,44 @@ def _run_inference_sync(image_bytes: bytes, query: str = _DEFAULT_PROMPT) -> dic
             max_new_tokens=256,
         )
     finally:
-        os.unlink(tmp_path)
+        _os.unlink(tmp_path)
 
     return result
 
+
+# ── Public entry point ────────────────────────────────────────────────
 
 async def run_segmentation(image_bytes: bytes, query: str = _DEFAULT_PROMPT) -> dict:
     """
     Analyze a retinal fundus image using the fine-tuned PaliGemma model.
 
-    This agent wraps the merged PaliGemma model for retinal analysis.
-    It generates clinical text describing DR grade, lesions, and findings.
-    If the model outputs <loc####> tokens (detection mode), those are
-    parsed into bounding boxes automatically.
-
-    Args:
-        image_bytes: Raw bytes of the input retinal fundus image (JPEG/PNG).
-        query:       The analysis prompt/question for the model.
-
-    Returns:
-        A dict with keys:
-            ``"detections"``            (list[dict]): Parsed bounding box
-                detections (empty if model outputs free text instead).
-            ``"annotated_image_base64"`` (str):  Base64 PNG with boxes drawn
-                (empty string if no detections).
-            ``"raw_output"``            (str):  Raw model output text.
-            ``"summary"``               (str):  Human-readable analysis summary.
-
-    Raises:
-        RuntimeError: If the image cannot be decoded or PaliGemma inference fails.
-        FileNotFoundError: If the model directory doesn't exist.
+    Routes to the HTTP server at OPTIASSIST_PALIGEMMA_URL when set,
+    otherwise loads the merged model in-process.
     """
-    if not _MODEL_DIR.exists():
-        raise FileNotFoundError(
-            f"PaliGemma model not found at {_MODEL_DIR}. "
-            f"Run `python backend/scripts/merge_adapter.py` first."
-        )
-
     try:
         pil = Image.open(io.BytesIO(image_bytes))
         w, h = pil.size
     except Exception as e:
         raise RuntimeError(f"Failed to decode image: {e}") from e
 
+    pali_url = os.environ.get("OPTIASSIST_PALIGEMMA_URL", "").rstrip("/")
+
     logger.info(
-        "PaliGemma — analyzing retinal image. image=%dx%d prompt=%r",
-        w, h, query[:60],
+        "PaliGemma — analyzing retinal image. image=%dx%d prompt=%r remote=%s",
+        w, h, query[:60], bool(pali_url),
     )
 
     try:
-        result = await asyncio.to_thread(_run_inference_sync, image_bytes, query)
+        if pali_url:
+            result = await _run_segmentation_remote(pali_url, image_bytes, query)
+        else:
+            if not _MODEL_DIR.exists():
+                raise FileNotFoundError(
+                    f"PaliGemma model not found at {_MODEL_DIR}. "
+                    f"Run `python backend/scripts/merge_adapter.py` first, "
+                    f"or set OPTIASSIST_PALIGEMMA_URL."
+                )
+            result = await asyncio.to_thread(_run_inference_sync, image_bytes, query)
     except (FileNotFoundError, ImportError):
         raise
     except Exception as e:
