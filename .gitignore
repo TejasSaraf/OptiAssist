@@ -1,0 +1,58 @@
+# Secrets
+.env
+backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Model checkpoints (large files)
+checkpoints/
+backend/models/
+*.ckpt
+*.safetensors
+*.bin
+
+# Data (large datasets — track with DVC or git-lfs)
+data/
+dataset/
+datasets/
+*.tar.gz
+*.zip
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Tensorboard
+runs/
+
+# Temporary Inference Artifacts
+tmp*.jpg
+
+# Output Logs and Evaluations
+eval_results.json
+out.txt
+*.log
+
+# Additional macOS/Dataset Metadata
+._*
+
+# AI Agent Data
+.agent/workflows/
