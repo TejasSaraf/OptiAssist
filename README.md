@@ -6,9 +6,9 @@ OpusAI is a multi-model AI pipeline that analyzes retinal fundus images and answ
 
 ---
 
-## Demo
+## Demo - Click to watch the demo
 
-[![Watch the demo]](https://youtu.be/5FZsRmOI36k?si=f8SB4pgFSNyYh-Tx)
+[![Watch the demo](https://img.youtube.com/vi/5FZsRmOI36k/maxresdefault.jpg)](https://youtu.be/5FZsRmOI36k?si=f8SB4pgFSNyYh-Tx)
 
 - **Image:** `/data/dr_unified_v2_sampled/test/0/134_right.jpg`
 - **Question:** `How severe is the diabetic retinopathy in this image?`
