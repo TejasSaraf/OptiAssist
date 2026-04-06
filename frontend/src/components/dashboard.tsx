@@ -514,7 +514,7 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
       <div className="flex min-h-screen flex-col md:flex-row">
         {/* ── Left sidebar ───────────────────────────────────── */}
         <aside
-          className="flex w-full shrink-0 flex-col border-b px-5 py-6 md:w-[min(100%,380px)] md:border-b-0 md:border-r"
+          className="flex w-full shrink-0 flex-col border-b px-5 py-6 md:w-1/2 md:border-b-0 md:border-r"
           style={{ backgroundColor: "#050505", borderColor: `rgba(${G_RGB}, 0.1)` }}
         >
           {/* Brand header */}
@@ -553,7 +553,7 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
                 className="relative overflow-hidden rounded-2xl border-2 border-dashed p-1 transition-colors hover:border-opacity-80"
                 style={{ borderColor: `rgba(${G_RGB}, 0.35)` }}
               >
-                <div className="relative mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-full bg-black">
+                <div className="relative mx-auto aspect-square w-full max-w-[300px] overflow-hidden rounded-full bg-black">
                   {previewUrl ? (
                     <img
                       src={previewUrl}
@@ -729,7 +729,7 @@ export default function Dashboard({ onBackHome }: DashboardProps) {
         </aside>
 
         {/* ── Main: pipeline only ───────────────────────────── */}
-        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-black">
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-black md:w-1/2">
           <div
             className="pointer-events-none absolute inset-0 opacity-[0.45]"
             style={{

@@ -1,29 +1,92 @@
-# OpusAI
+# OpusAI 👁️
 
-**OpusAI** is a web app for **retinal fundus analysis** aimed at diabetic retinopathy workflows. You upload an image, optionally edit a clinical question, and watch a **multi-model pipeline** stream results in real time. The UI is branded **OpusAI**; the FastAPI service still uses the internal name **OptiAssist** in a few places (API title, env prefixes).
+> **Fully local AI diagnostic assistant for ophthalmologists.** Patient data never leaves the clinic.
 
----
-
-## What you get
-
-| Area | Description |
-|------|-------------|
-| **Landing page** | Marketing copy, pipeline overview, model cards, and privacy/speed messaging. |
-| **Dashboard (`/app`)** | Upload fundus image, clinical question, **Run analysis** with live stage updates. |
-| **Backend** | **`POST /api/analyze`** accepts image + question and returns **Server-Sent Events (SSE)** as each stage runs. |
+OpusAI is a multi-model AI pipeline that analyzes retinal fundus images and answers clinical questions in real time — all on-device, with zero cloud dependency. It combines four specialized Google Gemma family models orchestrated through a 6-stage pipeline, streaming live progress updates to the clinician as each analysis step completes.
 
 ---
 
-## How the pipeline works (high level)
+## Demo
 
-1. **Input** — Image and question are received.  
-2. **Gemma 3** — Pre-scan of the fundus (via **Ollama**).  
-3. **FunctionGemma** — Suggests routing (segmentation vs diagnosis); full pipeline can be forced with env (see below).  
-4. **PaliGemma** — Vision / segmentation (HTTP server you configure, or local tooling).  
-5. **MedGemma** — Structured diagnosis JSON (Ollama, remote server, or Hugging Face, depending on config).  
-6. **Gemma 3 (summary)** — Merges outputs into a clinical narrative.
+[![Watch the demo]](https://youtu.be/5FZsRmOI36k?si=f8SB4pgFSNyYh-Tx)
 
-The dashboard labels match these stages (e.g. “Gemma 3 — Pre-scan”, “MedGemma 4B — Diagnosis”).
+- **Image:** `/data/dr_unified_v2_sampled/test/0/134_right.jpg`
+- **Question:** `How severe is the diabetic retinopathy in this image?`
+
+---
+
+## Key Features
+
+- **100% Local Inference** — HIPAA/GDPR-friendly; images and patient data never leave the device
+- **Multi-Model Pipeline** — Four specialized AI models working in concert: FunctionGemma, Gemma 3, PaliGemma 2, and MedGemma
+- **Real-Time Streaming** — Server-Sent Events push live progress updates for every pipeline stage
+- **Intelligent Routing** — FunctionGemma 270M autonomously decides which models to invoke based on the clinical question
+- **Optic Structure Segmentation** — Fine-tuned PaliGemma 2 detects optic disc and optic cup bounding boxes for diabetic retenopathy
+- **Structured Diagnosis** — Structured diagnosis JSON (Ollama, remote server, or Hugging Face, depending on config).  
+- **Summary** - Gemma 3 generates summary and merges output into a clinical narrative.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    FRONTEND (React.js)                      │
+│                                                             │
+│  /  Landing Page          /demo  Interactive Demo           │
+│     Hero, Problem,               Input Panel (upload +      │
+│     HowItWorks, TechStack        question) + SSE feed       │
+└──────────────────────────────┬──────────────────────────────┘
+                               │  POST /analyze (multipart)
+                               │  ← SSE Stream (text/event-stream)
+┌──────────────────────────────▼──────────────────────────────┐
+│                  BACKEND (FastAPI + Uvicorn)                │
+│                                                             │
+│  Stage 1  Input Validation                                  │
+│      ↓                                                      │
+│  Stage 2  prescan.py  →  Gemma 3 4B (Ollama)                │
+│      ↓                                                      │
+│  Stage 3  router.py      →  FunctionGemma 270M (Ollama)     │
+│      ↓                                                      │
+│  Stage 4  segmenter.py   →  PaliGemma 2 3B (HuggingFace)    │
+│      ↓                                                      │
+│  Stage 5  diagnosis.py   →  MedGemma 4B (HuggingFace)       │
+│      ↓                                                      │
+│  Stage 6  merger.py      →  Gemma 3 4B (Ollama)             │
+│                                                             │
+│  Local Model Runtime:                                       │
+│  · Ollama (localhost:11434): Gemma 3, FunctionGemma         │
+│  · HuggingFace Transformers: PaliGemma 2, MedGemma          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Models
+
+| Model | Parameters | Runtime | Role |
+|-------|-----------|---------|------|
+| **Gemma 3 4B** | 4B | Ollama | Image pre-scan description + final narrative summary |
+| **FunctionGemma** | 270M | Ollama | Intelligent routing via function calling |
+| **PaliGemma 2** *(custom QLoRA)* | 3B | HuggingFace Transformers | Optic disc/cup bounding box segmentation |
+| **MedGemma** | 4B | HuggingFace Transformers | Ophthalmic disease diagnosis + structured report |
+
+### 🔬 Custom Fine-Tuned PaliGemma 2
+
+The PaliGemma 2 model used in OptiAssist is **our own LoRA fine-tune**, trained specifically for retinal optic structure detection (optic disc and optic cup bounding boxes).
+
+| Training Detail | Value |
+|----------------|-------|
+| Base model | `google/paligemma-3b-pt-224` |
+| Fine-tuning method | QLoRA (4-bit NF4 quantization via BitsAndBytes) |
+| LoRA rank (`r`) | 8 |
+| LoRA alpha | 16 |
+| LoRA dropout | 0.05 |
+| Target modules | `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj` |
+| Epochs | 8 (with Early Stopping patience of 3)|
+| Batch size | 4 |
+| Input resolution | 224x224|
+| Task | Object detection via tokens |
+
+The adapter weights (`adapter_model.safetensors`) are loaded at runtime via `peft.PeftModel`, then merged into the base model for inference. Weights are stored locally under `backend/models/paligemma-finetuned/`.
 
 ---
 

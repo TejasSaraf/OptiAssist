@@ -283,7 +283,7 @@ export default function LandingPage() {
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <button
                                 type="button"
-                                onClick={handleGetStarted}
+                                onClick={() => window.location.href = "https://github.com/TejasSaraf/OpusAI"}
                                 style={{
                                     padding: "6px 14px",
                                     borderRadius: 8,
@@ -298,7 +298,7 @@ export default function LandingPage() {
                                 onMouseEnter={(e) => { e.currentTarget.style.background = "#22c55e"; e.currentTarget.style.transform = "scale(1.02)"; }}
                                 onMouseLeave={(e) => { e.currentTarget.style.background = "#4ade80"; e.currentTarget.style.transform = "scale(1)"; }}
                             >
-                                Get Started
+                                Watch Demo
                             </button>
                         </div>
                     </div>
@@ -446,6 +446,7 @@ export default function LandingPage() {
                             </button>
                             <button
                                 type="button"
+                                onClick={() => window.location.href = "https://github.com/TejasSaraf/OpusAI"}
                                 style={{
                                     padding: "14px 28px",
                                     borderRadius: 12,
